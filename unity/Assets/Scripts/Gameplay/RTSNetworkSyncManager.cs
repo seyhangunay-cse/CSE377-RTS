@@ -167,11 +167,62 @@ namespace CSE377.Gameplay
                     RefreshStatusMessage();
                     OnRoomStateChanged?.Invoke();
                 }
+
+                // Eğer tek editörde Sanal 2. Oyuncu (SIM_BOT_999) ile test yapılıyorsa Kırmızı AI Komutanı aktif çalışsın
+                if (enableRivalAi && guestInstanceId == "SIM_BOT_999")
+                {
+                    HandleRivalAiCommander();
+                }
             }
             else if (enableRivalAi && !isMultiplayerMode)
             {
                 HandleRivalAiCommander();
             }
+        }
+
+        /// <summary>
+        /// Tek bir Unity Editörü açıkken Build almadan 2 kişilik oda kilidini (1/2 -> 2/2) ve maç başlatmayı
+        /// anında test edebilmek için odaya sanal bir 2. Oyuncu (Kırmızı Komutan + Kırmızı AI) bağlar.
+        /// </summary>
+        public void SimulateSecondPlayerForTest()
+        {
+            if (!isMultiplayerMode || !isRoomConnected)
+            {
+                CreatePhotonRoom(localPlayerName, matchRoomId);
+            }
+
+            guestPlayerName = "Kırmızı_Test_Komutanı";
+            guestInstanceId = "SIM_BOT_999";
+            connectedPlayersCount = 2;
+            enableRivalAi = true;
+
+            try
+            {
+                RoomRegistryData reg = new RoomRegistryData();
+                if (File.Exists(RegistryFilePath))
+                {
+                    string raw = File.ReadAllText(RegistryFilePath, Encoding.UTF8);
+                    if (!string.IsNullOrWhiteSpace(raw))
+                    {
+                        reg = JsonUtility.FromJson<RoomRegistryData>(raw) ?? new RoomRegistryData();
+                    }
+                }
+                var myRoom = reg.rooms.Find(r => r != null && string.Equals(r.roomName, matchRoomId, StringComparison.OrdinalIgnoreCase));
+                if (myRoom != null)
+                {
+                    myRoom.guestName = guestPlayerName;
+                    myRoom.guestInstanceId = guestInstanceId;
+                    myRoom.playerCount = 2;
+                    myRoom.lastUpdatedTicks = DateTime.UtcNow.Ticks;
+                    File.WriteAllText(RegistryFilePath, JsonUtility.ToJson(reg), Encoding.UTF8);
+                }
+            }
+            catch { }
+
+            RefreshOpenRoomsRegistry();
+            RefreshStatusMessage();
+            OnRoomStateChanged?.Invoke();
+            Debug.Log($"[PHOTON TEST] '{matchRoomId}' odasına Sanal 2. Oyuncu ({guestPlayerName}) bağlandı! Oda 2/2 Hazır.");
         }
 
         public bool CanStartMultiplayerMatch()
@@ -1132,5 +1183,67 @@ namespace CSE377.Gameplay
         {
             RTSUnit.SpawnUnit(type, pos, UnitTeam.Enemy);
         }
+
+#if UNITY_EDITOR
+        [UnityEditor.MenuItem("CSE377 RTS/👥 1. Klon Editör Aç (Build Almadan 2. Oyuncu - Kodlar Otomatik Güncellenir)")]
+        public static void OpenCloneEditorForSecondPlayer()
+        {
+            try
+            {
+                string mainProjectPath = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+                string parentDir = Directory.GetParent(mainProjectPath).FullName;
+                string cloneProjectPath = Path.Combine(parentDir, "unity_Player2_Clone");
+
+                if (!Directory.Exists(cloneProjectPath))
+                {
+                    Directory.CreateDirectory(cloneProjectPath);
+                }
+
+                // Assets, Packages ve ProjectSettings klasörlerini Windows Junction (mklink /J) ile bağla!
+                // Böylece ana projede yazılan her kod anında Klon Editörde de otomatik güncellenir (Build almaya gerek kalmaz!)
+                string[] linkedFolders = new string[] { "Assets", "Packages", "ProjectSettings" };
+                foreach (string folder in linkedFolders)
+                {
+                    string src = Path.Combine(mainProjectPath, folder);
+                    string dst = Path.Combine(cloneProjectPath, folder);
+                    if (!Directory.Exists(dst))
+                    {
+                        var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{dst}\" \"{src}\"")
+                        {
+                            CreateNoWindow = true,
+                            UseShellExecute = false
+                        };
+                        var p = System.Diagnostics.Process.Start(psi);
+                        p?.WaitForExit(4000);
+                    }
+                }
+
+                string editorExe = UnityEditor.EditorApplication.applicationPath;
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = editorExe,
+                    Arguments = $"-projectPath \"{cloneProjectPath}\"",
+                    UseShellExecute = true
+                });
+
+                Debug.Log($"[CSE377 KLON EDİTÖR] 2. Oyuncu Klon Editörü başlatıldı: {cloneProjectPath} (Kodlar otomatik senkronize edilir, Build gerekmez!)");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[CSE377 KLON EDİTÖR HATASI] {ex.Message}");
+            }
+        }
+
+        [UnityEditor.MenuItem("CSE377 RTS/🤖 2. Açık Odaya Sanal 2. Oyuncu Bağla (Tek Editörde 2/2 Hızlı Test)")]
+        public static void MenuSimulateSecondPlayer()
+        {
+            if (!Application.isPlaying || Instance == null)
+            {
+                Debug.LogWarning("[CSE377 TEST] Önce oyunu Play (▶️) ile başlatıp Çok Oyunculu menüsünden bir oda açın.");
+                return;
+            }
+            Instance.SimulateSecondPlayerForTest();
+        }
+#endif
     }
 }

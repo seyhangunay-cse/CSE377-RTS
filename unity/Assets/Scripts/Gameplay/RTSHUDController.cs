@@ -175,6 +175,7 @@ namespace CSE377.Gameplay
         public Text activeRoomRedSlotText;
         public Button activeRoomSettingsBtn;
         public Button activeRoomCloseBtn;
+        public Button activeRoomSimulatePlayerBtn;
 
         [Header("Nasıl Oynanır / Kısayollar Modalı")]
         public GameObject controlsGuideModal;
@@ -460,6 +461,16 @@ namespace CSE377.Gameplay
             if (activeRoomSettingsBtn != null)
             {
                 activeRoomSettingsBtn.onClick.AddListener(OpenSettingsModal);
+            }
+
+            if (activeRoomSimulatePlayerBtn != null)
+            {
+                activeRoomSimulatePlayerBtn.onClick.AddListener(() =>
+                {
+                    RTSNetworkSyncManager.Instance?.SimulateSecondPlayerForTest();
+                    RTSAudioManager.Instance?.PlaySound(RTSSoundType.TechComplete);
+                    UpdatePhotonRoomLobbyUI();
+                });
             }
 
             if (mpLobbyStartMatchBtn != null)
@@ -951,6 +962,11 @@ namespace CSE377.Gameplay
                     activeRoomRedSlotText.text = "🔴 2. OYUNCU: KIRMIZI KRALLIK + KIRMIZI AI KOMUTAN\n⏳ Rakip Oyuncu Bekleniyor... (1/2 — Başka Oyuncu Odaya Katıldığında Dolacak)";
                     activeRoomRedSlotText.color = new Color(0.95f, 0.82f, 0.55f);
                 }
+            }
+
+            if (activeRoomSimulatePlayerBtn != null)
+            {
+                activeRoomSimulatePlayerBtn.gameObject.SetActive(!hasSecondPlayer);
             }
 
             if (startScreenTeamBtnText != null)

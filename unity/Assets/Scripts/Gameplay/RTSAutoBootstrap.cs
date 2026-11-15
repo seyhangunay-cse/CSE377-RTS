@@ -2589,9 +2589,13 @@ namespace CSE377.Gameplay
             var redSlotBorder = redSlotBox.AddComponent<Outline>();
             redSlotBorder.effectColor = new Color(0.95f, 0.38f, 0.35f, 0.85f);
 
-            var redSlotTxt = CreateUIText(redSlotBox.transform, "RedSlotText", "🔴 2. OYUNCU: KIRMIZI KRALLIK + KIRMIZI AI KOMUTAN\n⏳ Rakip Oyuncu Bekleniyor... (1/2 — Başka Oyuncu Odaya Katıldığında Dolacak)", 13, new Color(0.95f, 0.82f, 0.55f), medievalBodyFont, new Vector2(0.5f, 0.5f), new Vector2(670, 52));
+            var redSlotTxt = CreateUIText(redSlotBox.transform, "RedSlotText", "🔴 2. OYUNCU: KIRMIZI KRALLIK + KIRMIZI AI KOMUTAN\n⏳ Rakip Oyuncu Bekleniyor... (1/2)", 13, new Color(0.95f, 0.82f, 0.55f), medievalBodyFont, new Vector2(0.38f, 0.5f), new Vector2(490, 52));
             redSlotTxt.alignment = TextAnchor.MiddleLeft;
             redSlotTxt.fontStyle = FontStyle.Bold;
+
+            var simPlayerBtn = CreateUIButton(redSlotBox.transform, "SimulateSecondPlayerBtn", "🤖 TEST: 2. OYUNCU BAĞLA", medievalTitleFont, new Vector2(0.845f, 0.5f), new Vector2(185, 38), new Color(0.18f, 0.42f, 0.28f));
+            var simPlayerTxt = simPlayerBtn.GetComponentInChildren<Text>();
+            if (simPlayerTxt != null) { simPlayerTxt.fontSize = 10; simPlayerTxt.fontStyle = FontStyle.Bold; simPlayerTxt.color = new Color(0.88f, 1.0f, 0.90f); }
 
             // 2. Bölüm: OYUN AYARLARI (Harita Seçimi, Rol Bilgisi & Ses/Oyun Ayarları)
             var settingsHdr = CreateUIText(arBox.transform, "RoomSettingsHeader", "⚙️ ODA İÇİ OYUN AYARLARI & HARİTA SEÇİMİ:", 12, new Color(1f, 0.88f, 0.42f), medievalTitleFont, new Vector2(0.5f, 0.515f), new Vector2(700, 20));
@@ -2665,6 +2669,7 @@ namespace CSE377.Gameplay
             hud.activeRoomRedSlotText = redSlotTxt;
             hud.activeRoomSettingsBtn = roomSettingsBtn;
             hud.activeRoomCloseBtn = arCloseRoomBtn;
+            hud.activeRoomSimulatePlayerBtn = simPlayerBtn;
 
             // --- 8. KONTROLLER & REHBER MODALI ---
             var guideModal = CreateUIPanel(canvasGo.transform, "ControlsGuide_Modal", new Vector2(0, 0), new Vector2(1, 1), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, new Color(0.02f, 0.03f, 0.05f, 0.92f));
