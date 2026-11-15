@@ -93,7 +93,8 @@ namespace CSE377.Gameplay
         public IReadOnlyList<RoomListingInfo> ActiveOpenRooms => activeOpenRooms;
 
         private string RegistryFilePath => Path.Combine(Path.GetTempPath(), "CSE377_PhotonLobby_Rooms.json");
-        private string RoomPacketLogFilePath => Path.Combine(Path.GetTempPath(), $"CSE377_PhotonRoom_{matchRoomId}_Packets.json");
+        private string OutboundPacketFilePath => Path.Combine(Path.GetTempPath(), $"CSE377_PhotonRoom_{matchRoomId}_Out_{assignedTeam}.json");
+        private string InboundPacketFilePath => Path.Combine(Path.GetTempPath(), $"CSE377_PhotonRoom_{matchRoomId}_Out_{(assignedTeam == UnitTeam.Player ? UnitTeam.Enemy : UnitTeam.Player)}.json");
 
         [Serializable]
         private class NetworkPacket
@@ -179,11 +180,17 @@ namespace CSE377.Gameplay
                     SendRawPacket("HELLO", localPlayerName);
                 }
 
-                // Maç başladıysa her iki sahnenin (birim konumları, bina inşaatları ve can değerleri) birebir eşit ilerlemesi için canlı durum senkronizasyonu gönder
-                if (hasLaunchedCurrentRoomMatch && Time.unscaledTime >= nextLiveWorldSyncTime)
+                // Maç başladıysa her iki sahnenin (yeni binalar, birim konumları, inşaat ilerlemeleri ve can değerleri) birebir eşit ilerlemesi için canlı durum senkronizasyonu gönder
+                bool isInActiveMatch = hasLaunchedCurrentRoomMatch
+                    || (RTSHUDController.Instance != null && RTSHUDController.Instance.startScreenModal != null && !RTSHUDController.Instance.startScreenModal.activeSelf);
+                if (isInActiveMatch)
                 {
-                    nextLiveWorldSyncTime = Time.unscaledTime + 0.25f;
-                    BroadcastTeamLiveState();
+                    hasLaunchedCurrentRoomMatch = true;
+                    if (Time.unscaledTime >= nextLiveWorldSyncTime)
+                    {
+                        nextLiveWorldSyncTime = Time.unscaledTime + 0.20f;
+                        BroadcastTeamLiveState();
+                    }
                 }
 
                 bool udpPeerAlive = (Time.unscaledTime - lastRemoteHeartbeatTime < 6.0f);
@@ -434,6 +441,15 @@ namespace CSE377.Gameplay
             isRoomConnected = true;
             hasLaunchedCurrentRoomMatch = false;
             enableRivalAi = false;
+
+            try
+            {
+                if (File.Exists(OutboundPacketFilePath))
+                {
+                    File.Delete(OutboundPacketFilePath);
+                }
+            }
+            catch { }
 
             if (isHost)
             {
@@ -757,28 +773,29 @@ namespace CSE377.Gameplay
                 catch { }
             }
 
-            // 2. Kanal: %100 Güvenilir Paylaşımlı Oda Paket Kuyruğu (Port çakışması veya UDP kaybında bile tüm emirlerin eksiksiz ulaşmasını garanti eder)
+            // 2. Kanal: %100 Güvenilir Takım Bazlı Oda Paket Kuyruğu (Her takım kendi dosyasına yazar, karşı takımın dosyasını okur; çakışma ve paket kaybı %100 önlenir)
             if (packetType != "HELLO")
             {
                 try
                 {
+                    string outPath = OutboundPacketFilePath;
                     RoomPacketLogData log = new RoomPacketLogData();
-                    if (File.Exists(RoomPacketLogFilePath))
+                    if (File.Exists(outPath))
                     {
-                        string raw = File.ReadAllText(RoomPacketLogFilePath, Encoding.UTF8);
+                        string raw = File.ReadAllText(outPath, Encoding.UTF8);
                         if (!string.IsNullOrWhiteSpace(raw))
                         {
                             log = JsonUtility.FromJson<RoomPacketLogData>(raw) ?? new RoomPacketLogData();
                         }
                     }
-                    long cutoffTicks = DateTime.UtcNow.Ticks - TimeSpan.FromSeconds(8.0).Ticks;
-                    log.packets.RemoveAll(p => p == null || p.sentTicks < cutoffTicks || (packetType == "TEAM_STATE_SYNC" && p.type == "TEAM_STATE_SYNC" && p.senderInstanceId == clientInstanceId));
+                    long cutoffTicks = DateTime.UtcNow.Ticks - TimeSpan.FromSeconds(10.0).Ticks;
+                    log.packets.RemoveAll(p => p == null || p.sentTicks < cutoffTicks || (packetType == "TEAM_STATE_SYNC" && p.type == "TEAM_STATE_SYNC"));
                     log.packets.Add(pkt);
-                    if (log.packets.Count > 45)
+                    if (log.packets.Count > 50)
                     {
-                        log.packets.RemoveRange(0, log.packets.Count - 45);
+                        log.packets.RemoveRange(0, log.packets.Count - 50);
                     }
-                    File.WriteAllText(RoomPacketLogFilePath, JsonUtility.ToJson(log), Encoding.UTF8);
+                    File.WriteAllText(outPath, JsonUtility.ToJson(log), Encoding.UTF8);
                 }
                 catch { }
             }
@@ -788,8 +805,9 @@ namespace CSE377.Gameplay
         {
             try
             {
-                if (!File.Exists(RoomPacketLogFilePath)) return;
-                string raw = File.ReadAllText(RoomPacketLogFilePath, Encoding.UTF8);
+                string inPath = InboundPacketFilePath;
+                if (!File.Exists(inPath)) return;
+                string raw = File.ReadAllText(inPath, Encoding.UTF8);
                 if (string.IsNullOrWhiteSpace(raw)) return;
                 var log = JsonUtility.FromJson<RoomPacketLogData>(raw);
                 if (log == null || log.packets == null) return;
@@ -873,6 +891,7 @@ namespace CSE377.Gameplay
                         float y = float.Parse(parts[2], CultureInfo.InvariantCulture);
                         float z = float.Parse(parts[3], CultureInfo.InvariantCulture);
                         RTSUnit.SpawnUnit(uType, new Vector3(x, y, z), senderTeam);
+                        RTSMinimapController.Instance?.DrawMinimap();
                     }
                 }
                 else if (pkt.type == "SPAWN_BLD" && !string.IsNullOrEmpty(pkt.payload))
@@ -884,17 +903,28 @@ namespace CSE377.Gameplay
                         float y = float.Parse(parts[2], CultureInfo.InvariantCulture);
                         float z = float.Parse(parts[3], CultureInfo.InvariantCulture);
                         bool startBuilt = parts[4] == "1";
-                        var bld = RTSBuilding.SpawnBuilding(bType, new Vector3(x, y, z), senderTeam, startBuilt);
-                        if (!startBuilt && bld != null)
+
+                        bool alreadyExists = false;
+                        foreach (var existing in RTSBuilding.AllBuildings)
                         {
-                            foreach (var u in RTSUnit.AllUnits)
+                            if (existing != null && existing.currentHp > 0 && existing.team == senderTeam && existing.buildingType == bType)
                             {
-                                if (u != null && u.team == senderTeam && u.unitType.ToLower() == "villager" && u.currentHp > 0)
+                                if (Vector2.Distance(new Vector2(existing.transform.position.x, existing.transform.position.z), new Vector2(x, z)) < 3.0f)
                                 {
-                                    var v = u.GetComponent<RTSVillager>();
-                                    if (v != null) { v.AssignBuildTask(bld); break; }
+                                    alreadyExists = true;
+                                    break;
                                 }
                             }
+                        }
+
+                        if (!alreadyExists)
+                        {
+                            var bld = RTSBuilding.SpawnBuilding(bType, new Vector3(x, y, z), senderTeam, startBuilt);
+                            if (!startBuilt && bld != null)
+                            {
+                                AssignRemoteVillagerToBuild(senderTeam, bld);
+                            }
+                            RTSMinimapController.Instance?.DrawMinimap();
                         }
                     }
                 }
@@ -1131,12 +1161,44 @@ namespace CSE377.Gameplay
             SendRawPacket("TEAM_STATE_SYNC", sb.ToString());
         }
 
+        private void AssignRemoteVillagerToBuild(UnitTeam remoteTeam, RTSBuilding bld)
+        {
+            if (bld == null) return;
+            RTSVillager bestVil = null;
+            float bestDist = float.MaxValue;
+            foreach (var u in RTSUnit.AllUnits)
+            {
+                if (u != null && u.team == remoteTeam && u.unitType.ToLower() == "villager" && u.currentHp > 0)
+                {
+                    var v = u.GetComponent<RTSVillager>();
+                    if (v != null)
+                    {
+                        float d = Vector3.Distance(u.transform.position, bld.transform.position);
+                        if (d < bestDist)
+                        {
+                            bestDist = d;
+                            bestVil = v;
+                        }
+                    }
+                }
+            }
+            if (bestVil != null)
+            {
+                bestVil.AssignBuildTask(bld);
+            }
+        }
+
         private void ApplyRemoteTeamLiveState(UnitTeam remoteTeam, string payload)
         {
-            if (!hasLaunchedCurrentRoomMatch || string.IsNullOrEmpty(payload)) return;
+            if (string.IsNullOrEmpty(payload)) return;
+            bool isInActiveMatch = hasLaunchedCurrentRoomMatch
+                || (RTSHUDController.Instance != null && RTSHUDController.Instance.startScreenModal != null && !RTSHUDController.Instance.startScreenModal.activeSelf);
+            if (!isInActiveMatch) return;
+            hasLaunchedCurrentRoomMatch = true;
+
             string[] sections = payload.Split('|');
 
-            // 1. Karşı takımın canlı birim konumlarını, hareket hedeflerini ve canlarını eşitle
+            // 1. Karşı takımın canlı birim konumlarını, yeni basılan askerlerini, hareket hedeflerini ve canlarını eşitle
             if (sections.Length >= 1 && !string.IsNullOrWhiteSpace(sections[0]))
             {
                 var usedUnits = new HashSet<RTSUnit>();
@@ -1158,6 +1220,13 @@ namespace CSE377.Gameplay
 
                         Vector3 targetWorldPos = new Vector3(px, 0.1f, pz);
                         RTSUnit match = FindClosestTeamUnit(remoteTeam, uType, targetWorldPos, usedUnits);
+
+                        // Eğer karşı oyuncunun ürettiği bu birim sahnede henüz yoksa anında oluştur!
+                        if (match == null)
+                        {
+                            match = RTSUnit.SpawnUnit(uType, targetWorldPos, remoteTeam);
+                        }
+
                         if (match != null)
                         {
                             usedUnits.Add(match);
@@ -1187,7 +1256,7 @@ namespace CSE377.Gameplay
                 }
             }
 
-            // 2. Karşı takımın binalarının inşaat ilerlemesini ve can değerlerini eşitle
+            // 2. Karşı takımın yeni yaptığı binaları, inşaat ilerlemelerini ve can değerlerini anında eşitle!
             if (sections.Length >= 2 && !string.IsNullOrWhiteSpace(sections[1]))
             {
                 var usedBlds = new HashSet<RTSBuilding>();
@@ -1205,7 +1274,7 @@ namespace CSE377.Gameplay
                         float prog = float.Parse(f[5], CultureInfo.InvariantCulture);
 
                         RTSBuilding bestBld = null;
-                        float bestD = 10f;
+                        float bestD = 4.5f;
                         foreach (var b in RTSBuilding.AllBuildings)
                         {
                             if (b == null || b.currentHp <= 0 || b.team != remoteTeam || b.buildingType != bType || usedBlds.Contains(b)) continue;
@@ -1215,6 +1284,18 @@ namespace CSE377.Gameplay
                                 bestD = d;
                                 bestBld = b;
                             }
+                        }
+
+                        // Eğer rakip oyuncu yeni bir inşaat yaptıysa ve bu sahnede henüz yoksa anında oluştur!
+                        if (bestBld == null)
+                        {
+                            bestBld = RTSBuilding.SpawnBuilding(bType, new Vector3(bx, 0f, bz), remoteTeam, isConst);
+                            if (!isConst && bestBld != null)
+                            {
+                                if (prog > 0f) bestBld.AddConstructionProgress(prog);
+                                AssignRemoteVillagerToBuild(remoteTeam, bestBld);
+                            }
+                            RTSMinimapController.Instance?.DrawMinimap();
                         }
 
                         if (bestBld != null)

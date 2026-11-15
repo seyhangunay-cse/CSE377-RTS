@@ -1713,40 +1713,20 @@ namespace CSE377.Gameplay
         private void SpawnEnemyOutpost()
         {
             Vector3 eBase = CurrentEnemyBasePos;
-            Vector3 eFwd = (Vector3.zero - eBase);
-            eFwd.y = 0;
-            if (eFwd.sqrMagnitude < 0.01f) eFwd = Vector3.back;
-            else eFwd.Normalize();
-            Vector3 eRight = Vector3.Cross(Vector3.up, eFwd).normalized;
 
             var enemyZoneGo = new GameObject("Zone_EnemyOutpost", typeof(RTSZoneMarker));
             if (mapEnvironmentRoot != null) enemyZoneGo.transform.SetParent(mapEnvironmentRoot.transform);
             var enemyMarker = enemyZoneGo.GetComponent<RTSZoneMarker>();
             enemyMarker.zoneId = "enemy_base";
-            enemyMarker.displayName = "Düşman Karargahı & Kalesi";
-            enemyMarker.radius = 16f;
+            enemyMarker.displayName = "Kırmızı Şehir Merkezi";
+            enemyMarker.radius = 15f;
             enemyMarker.gizmoColor = Color.red;
             enemyZoneGo.transform.position = eBase + Vector3.up * 0.1f;
 
-            // 1. Kırmızı Düşman Şehir Merkezi (Karargah - Zafer Hedefi!)
+            // Kırmızı Krallık da Mavi Krallık ile %100 eşit başlar: Yalnızca 1 Şehir Merkezi!
+            // (Kışla, Okçu Talimgahı, Kuşatma Atölyesi ve Kale oyun içinde köylüler veya AI Komutan tarafından inşa edilir)
             var enemyTC = RTSBuilding.SpawnBuilding(RTSBuildingType.TownCenter, eBase, UnitTeam.Enemy, startBuilt: true);
-            enemyTC.displayName = "Düşman Karargahı";
-
-            // 2. Kırmızı Düşman Askeri Binaları ve Kalesi:
-            // Yanlardaki maden/çalı kaynaklarına ve arkadaki orman kuşağına asla denk gelmemesi için
-            // Karargahın ön cephesinde (merkeze bakan +eFwd yönünde) düzenli yarım ay savunma hattı olarak dizilir!
-            var enemyBarracks = RTSBuilding.SpawnBuilding(RTSBuildingType.Barracks, eBase + eFwd * 12.5f - eRight * 9.5f, UnitTeam.Enemy, startBuilt: true);
-            enemyBarracks.displayName = "Düşman Kışlası";
-
-            var enemyArchery = RTSBuilding.SpawnBuilding(RTSBuildingType.ArcheryRange, eBase + eFwd * 11.5f - eRight * 19.5f, UnitTeam.Enemy, startBuilt: true);
-            enemyArchery.displayName = "Düşman Okçu Talimgahı";
-
-            var enemyWorkshop = RTSBuilding.SpawnBuilding(RTSBuildingType.SiegeWorkshop, eBase + eFwd * 11.5f + eRight * 19.5f, UnitTeam.Enemy, startBuilt: true);
-            enemyWorkshop.displayName = "Düşman Kuşatma Atölyesi";
-
-            // 3. Kırmızı Düşman Kalesi (Büyük İmparatorluk Kalesi)
-            var enemyCastle = RTSBuilding.SpawnBuilding(RTSBuildingType.Castle, eBase + eFwd * 12.5f + eRight * 9.5f, UnitTeam.Enemy, startBuilt: true);
-            enemyCastle.displayName = "Düşman Şanlı Kalesi";
+            enemyTC.displayName = "Şehir Merkezi";
         }
 
         /// <summary>
@@ -1870,16 +1850,11 @@ namespace CSE377.Gameplay
             else eFwd.Normalize();
             Vector3 eRight = Vector3.Cross(Vector3.up, eFwd).normalized;
 
-            // 2. Düşman Başlangıç Kadrosu (Köylüler ve Muhafızlar)
-            CreateUnitInstance("villager", UnitTeam.Enemy, CurrentEnemyBasePos + eFwd * 5.0f - eRight * 3.0f + Vector3.up * 0.1f);
-            CreateUnitInstance("villager", UnitTeam.Enemy, CurrentEnemyBasePos + eFwd * 5.0f + eRight * 3.0f + Vector3.up * 0.1f);
-            CreateUnitInstance("villager", UnitTeam.Enemy, CurrentEnemyBasePos + eFwd * 6.5f + Vector3.up * 0.1f);
-
-            // Düşman Kale Muhafızları
-            CreateUnitInstance("spearman", UnitTeam.Enemy, CurrentEnemyBasePos + eFwd * 9.0f - eRight * 4.5f + Vector3.up * 0.1f);
-            CreateUnitInstance("spearman", UnitTeam.Enemy, CurrentEnemyBasePos + eFwd * 9.0f + eRight * 4.5f + Vector3.up * 0.1f);
-            CreateUnitInstance("archer", UnitTeam.Enemy, CurrentEnemyBasePos + eFwd * 10.0f + Vector3.up * 0.1f);
-            CreateUnitInstance("scout", UnitTeam.Enemy, CurrentEnemyBasePos + eFwd * 14.0f + Vector3.up * 0.1f);
+            // 2. Kırmızı Krallık Başlangıç Kadrosu (Mavi Krallık ile %100 Eşit: 3 Köylü + 1 Keşif Atlısı)
+            CreateUnitInstance("villager", UnitTeam.Enemy, CurrentEnemyBasePos + eFwd * 5.5f - eRight * 3.5f + Vector3.up * 0.1f);
+            CreateUnitInstance("villager", UnitTeam.Enemy, CurrentEnemyBasePos + eFwd * 5.5f + eRight * 3.5f + Vector3.up * 0.1f);
+            CreateUnitInstance("villager", UnitTeam.Enemy, CurrentEnemyBasePos + eFwd * 7.0f + Vector3.up * 0.1f);
+            CreateUnitInstance("scout", UnitTeam.Enemy, CurrentEnemyBasePos + eFwd * 10.5f + Vector3.up * 0.1f);
         }
 
         private void CreateUnitInstance(string type, UnitTeam team, Vector3 pos)

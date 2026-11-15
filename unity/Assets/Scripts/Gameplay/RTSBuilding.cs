@@ -1281,30 +1281,6 @@ namespace CSE377.Gameplay
                     break;
             }
 
-            if (team == UnitTeam.Enemy)
-            {
-                if (type == RTSBuildingType.TownCenter)
-                {
-                    building.displayName = "Düşman Karargahı";
-                    building.maxHp = 900;
-                }
-                else if (type == RTSBuildingType.Barracks)
-                {
-                    building.displayName = "Düşman Kışlası";
-                    building.maxHp = 500;
-                }
-                else if (type == RTSBuildingType.DefenseTower)
-                {
-                    building.displayName = "Düşman Kulesi";
-                    building.maxHp = 400;
-                }
-                else if (type == RTSBuildingType.Castle)
-                {
-                    building.displayName = "Düşman Kalesi";
-                    building.maxHp = 3000;
-                }
-            }
-
             if (startBuilt)
             {
                 building.isConstructed = true;
@@ -1327,7 +1303,11 @@ namespace CSE377.Gameplay
                 building.isConstructed = false;
                 building.constructionProgress = 0f;
                 building.currentHp = 1;
-                vGo.transform.localScale = new Vector3(1f, 0.2f, 1f);
+                vGo.transform.localScale = new Vector3(1f, 0.35f, 1f);
+                if (bGo.GetComponent<RTSConstructionScaffold>() == null)
+                {
+                    bGo.AddComponent<RTSConstructionScaffold>();
+                }
             }
 
             building.UpdateVisualProgress();
@@ -1370,45 +1350,33 @@ namespace CSE377.Gameplay
                 RTSAtmosphericLight.CreateTorch(building.transform, new Vector3(0, 1.6f, -1.5f), new Color(1.0f, 0.55f, 0.15f), range: 7f, intensity: 1.35f);
             }
 
-            // Rakip binalarını (sancak ve meşaleler dahil tüm alt parçaları oluşturulduktan sonra) sis gizleme sistemine bağla
+            // Her iki oyuncuda da inşa edilen tüm binalar (sancak, iskele ve meşaleler dahil) 3D sahnede görünür kalır
             building.RefreshFogPerspective();
 
             return building;
         }
 
         /// <summary>
-        /// Yerel oyuncunun takımına (Mavi veya Kırmızı) göre binanın Savaş Sisi (Fog-of-War) görünürlüğünü günceller.
-        /// Dost binalar her zaman tam görünür; rakip binalar sis altında gizlenir ve keşfedildiğinde açılır.
+        /// Yerel oyuncunun takımına (Mavi veya Kırmızı) göre binanın 3D görünürlüğünü günceller.
+        /// Yapılan tüm yeni inşaatların her iki oyuncunun ekranında da anında görünmesi için bina modelleri daima aktif tutulur.
         /// </summary>
         public void RefreshFogPerspective()
         {
             var disc = gameObject.GetComponent<RTSFogDiscoverable>();
-            if (team == RTSGameManager.LocalPlayerTeam)
+            if (disc != null)
             {
-                if (disc != null)
-                {
-                    disc.SetDiscovered(true);
-                    disc.SetShroudDimmed(false);
-                    RTSFogDiscoverable.AllDiscoverables.Remove(disc);
-                    DestroyImmediate(disc);
-                }
-                foreach (var r in GetComponentsInChildren<Renderer>(true))
-                {
-                    if (r != null) r.enabled = true;
-                }
-                foreach (var l in GetComponentsInChildren<Light>(true))
-                {
-                    if (l != null) l.enabled = true;
-                }
+                disc.SetDiscovered(true);
+                disc.SetShroudDimmed(false);
+                RTSFogDiscoverable.AllDiscoverables.Remove(disc);
+                DestroyImmediate(disc);
             }
-            else
+            foreach (var r in GetComponentsInChildren<Renderer>(true))
             {
-                if (disc == null)
-                {
-                    disc = gameObject.AddComponent<RTSFogDiscoverable>();
-                }
-                bool vis = RTSFogOfWarManager.Instance != null && RTSFogOfWarManager.Instance.IsBuildingVisible(this);
-                disc.ApplyVisibility(vis);
+                if (r != null) r.enabled = true;
+            }
+            foreach (var l in GetComponentsInChildren<Light>(true))
+            {
+                if (l != null) l.enabled = true;
             }
         }
     }

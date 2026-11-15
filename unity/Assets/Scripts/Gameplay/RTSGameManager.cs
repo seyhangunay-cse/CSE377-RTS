@@ -91,7 +91,7 @@ namespace CSE377.Gameplay
 
         private void Update()
         {
-            if (isGameOver || !enableEnemyRaids) return;
+            if (isGameOver || !enableEnemyRaids || IsMultiplayerPvP || (RTSNetworkSyncManager.Instance != null && RTSNetworkSyncManager.Instance.isMultiplayerMode)) return;
 
             // Başlangıç ekranı modalı açıkken veya oyun duraklatılmışken sayaç beklemede kalır
             if (Time.timeScale == 0f || (hudController != null && hudController.startScreenModal != null && hudController.startScreenModal.activeSelf))
@@ -474,8 +474,8 @@ namespace CSE377.Gameplay
         public int CalculateMaxPopulation(UnitTeam? teamOverride = null)
         {
             UnitTeam targetTeam = teamOverride ?? LocalPlayerTeam;
-            // Taban başlangıç nüfus kapasitesi: 10 (Çok oyunculu Kırmızı başlangıçta +5 muhafız payı)
-            int cap = (targetTeam == UnitTeam.Enemy) ? 15 : 10;
+            // Taban başlangıç nüfus kapasitesi: Her iki takım (Mavi ve Kırmızı) için eşit 10 nüfus
+            int cap = 10;
 
             foreach (var b in RTSBuilding.AllBuildings)
             {
@@ -705,7 +705,10 @@ namespace CSE377.Gameplay
                 switch (action.action_type.ToUpper())
                 {
                     case "TRAIN_UNIT":
-                        TrainUnits(action.unit_type, action.count, action.target_zone, execTeam);
+                        if (broadcastOverNetwork)
+                        {
+                            TrainUnits(action.unit_type, action.count, action.target_zone, execTeam);
+                        }
                         break;
 
                     case "MOVE_GROUP":
@@ -723,8 +726,11 @@ namespace CSE377.Gameplay
                         break;
 
                     case "BUILD":
-                        string bTypeToBuild = !string.IsNullOrEmpty(action.building_type) ? action.building_type : action.unit_type;
-                        ExecuteBuildAction(bTypeToBuild, action.target_zone, execTeam);
+                        if (broadcastOverNetwork)
+                        {
+                            string bTypeToBuild = !string.IsNullOrEmpty(action.building_type) ? action.building_type : action.unit_type;
+                            ExecuteBuildAction(bTypeToBuild, action.target_zone, execTeam);
+                        }
                         break;
 
                     case "RESEARCH":
@@ -781,6 +787,10 @@ namespace CSE377.Gameplay
             Vector3 buildPos = zoneCenter + new Vector3(Random.Range(-4.5f, 4.5f), 0, Random.Range(-4.5f, 4.5f));
 
             var building = RTSBuilding.SpawnBuilding(bType, buildPos, execTeam, startBuilt: false);
+            if (execTeam == LocalPlayerTeam)
+            {
+                RTSNetworkSyncManager.Instance?.BroadcastBuildingSpawn(bType, buildPos, execTeam, false);
+            }
 
             // İlgili takımın uygun bir köylüsünü inşaat için görevlendir
             foreach (var u in RTSUnit.AllUnits)
@@ -877,6 +887,10 @@ namespace CSE377.Gameplay
             {
                 Vector3 spawnPos = spawnOrigin + new Vector3(Random.Range(-1.5f, 1.5f), 0, Random.Range(-1.5f, 1.5f));
                 var unitComp = RTSUnit.SpawnUnit(unitType, spawnPos, execTeam);
+                if (execTeam == LocalPlayerTeam)
+                {
+                    RTSNetworkSyncManager.Instance?.BroadcastUnitSpawn(unitType, spawnPos, execTeam);
+                }
 
                 if (unitComp != null && !string.IsNullOrEmpty(targetZone))
                 {
