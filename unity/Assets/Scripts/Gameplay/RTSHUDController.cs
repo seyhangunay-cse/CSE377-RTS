@@ -151,14 +151,21 @@ namespace CSE377.Gameplay
 
         [Header("Çok Oyunculu Photon Oda Lobisi Modalı (Multiplayer Lobby Modal)")]
         public GameObject multiplayerLobbyModal;
+        public InputField mpPlayerNameInput;
         public InputField startScreenRoomInput;
+        public Button mpCreateRoomBtn;
         public Button startScreenJoinRoomBtn;
+        public Button mpRefreshRoomsBtn;
+        public Button[] mpOpenRoomRowBtns;
+        public Text[] mpOpenRoomRowTexts;
+        public Text mpNoOpenRoomsText;
         public Button startScreenTeamBtn;
         public Text startScreenTeamBtnText;
         public Text startScreenRoomStatusText;
         public Button mpLobbyMapBtn;
         public Text mpLobbyMapBtnText;
         public Button mpLobbyStartMatchBtn;
+        public Text mpLobbyStartMatchBtnText;
         public Button mpLobbyBackBtn;
 
         [Header("Nasıl Oynanır / Kısayollar Modalı")]
@@ -355,14 +362,53 @@ namespace CSE377.Gameplay
                     }
                     if (RTSNetworkSyncManager.Instance != null)
                     {
-                        string roomCode = (startScreenRoomInput != null && !string.IsNullOrWhiteSpace(startScreenRoomInput.text))
-                            ? startScreenRoomInput.text.Trim().ToUpperInvariant()
-                            : "ODA-101";
-                        RTSNetworkSyncManager.Instance.ConnectToPhotonRoom(roomCode, RTSNetworkSyncManager.Instance.assignedTeam);
+                        if (mpPlayerNameInput != null && string.IsNullOrWhiteSpace(mpPlayerNameInput.text))
+                        {
+                            mpPlayerNameInput.text = RTSNetworkSyncManager.Instance.localPlayerName;
+                        }
+                        RTSNetworkSyncManager.Instance.RefreshOpenRoomsRegistry();
                     }
                     RTSAudioManager.Instance?.PlaySound(RTSSoundType.Click);
                     UpdatePhotonRoomLobbyUI();
                     UpdateMapSelectionUI();
+                });
+            }
+
+            if (mpPlayerNameInput != null)
+            {
+                mpPlayerNameInput.onEndEdit.AddListener((val) =>
+                {
+                    RTSNetworkSyncManager.Instance?.SetPlayerName(val);
+                    UpdatePhotonRoomLobbyUI();
+                });
+            }
+
+            if (mpCreateRoomBtn != null)
+            {
+                mpCreateRoomBtn.onClick.AddListener(() =>
+                {
+                    if (RTSNetworkSyncManager.Instance != null)
+                    {
+                        string pName = (mpPlayerNameInput != null && !string.IsNullOrWhiteSpace(mpPlayerNameInput.text))
+                            ? mpPlayerNameInput.text.Trim()
+                            : RTSNetworkSyncManager.Instance.localPlayerName;
+                        string rCode = (startScreenRoomInput != null && !string.IsNullOrWhiteSpace(startScreenRoomInput.text))
+                            ? startScreenRoomInput.text.Trim().ToUpperInvariant()
+                            : "ODA-101";
+                        RTSNetworkSyncManager.Instance.CreatePhotonRoom(pName, rCode);
+                    }
+                    RTSAudioManager.Instance?.PlaySound(RTSSoundType.TechComplete);
+                    UpdatePhotonRoomLobbyUI();
+                });
+            }
+
+            if (mpRefreshRoomsBtn != null)
+            {
+                mpRefreshRoomsBtn.onClick.AddListener(() =>
+                {
+                    RTSNetworkSyncManager.Instance?.RefreshOpenRoomsRegistry();
+                    RTSAudioManager.Instance?.PlaySound(RTSSoundType.Click);
+                    UpdatePhotonRoomLobbyUI();
                 });
             }
 
@@ -384,12 +430,16 @@ namespace CSE377.Gameplay
             {
                 mpLobbyStartMatchBtn.onClick.AddListener(() =>
                 {
-                    if (RTSNetworkSyncManager.Instance != null && !RTSNetworkSyncManager.Instance.isMultiplayerMode)
+                    var net = RTSNetworkSyncManager.Instance;
+                    if (net == null || !net.CanStartMultiplayerMatch())
                     {
-                        string roomCode = (startScreenRoomInput != null && !string.IsNullOrWhiteSpace(startScreenRoomInput.text))
-                            ? startScreenRoomInput.text.Trim().ToUpperInvariant()
-                            : "ODA-101";
-                        RTSNetworkSyncManager.Instance.ConnectToPhotonRoom(roomCode, RTSNetworkSyncManager.Instance.assignedTeam);
+                        RTSAudioManager.Instance?.PlaySound(RTSSoundType.Click);
+                        if (startScreenRoomStatusText != null)
+                        {
+                            startScreenRoomStatusText.text = "⚠️ Odaya 2. oyuncu bağlanmadan (2/2 olmadan) Çok Oyunculu Sefer başlatılamaz!";
+                            startScreenRoomStatusText.color = new Color(1f, 0.45f, 0.35f);
+                        }
+                        return;
                     }
                     LaunchMatchFromMenu();
                 });
@@ -406,10 +456,13 @@ namespace CSE377.Gameplay
                 {
                     if (RTSNetworkSyncManager.Instance != null)
                     {
+                        string pName = (mpPlayerNameInput != null && !string.IsNullOrWhiteSpace(mpPlayerNameInput.text))
+                            ? mpPlayerNameInput.text.Trim()
+                            : RTSNetworkSyncManager.Instance.localPlayerName;
                         string roomCode = (startScreenRoomInput != null && !string.IsNullOrWhiteSpace(startScreenRoomInput.text))
                             ? startScreenRoomInput.text.Trim().ToUpperInvariant()
                             : "ODA-101";
-                        RTSNetworkSyncManager.Instance.ConnectToPhotonRoom(roomCode, RTSNetworkSyncManager.Instance.assignedTeam);
+                        RTSNetworkSyncManager.Instance.JoinPhotonRoom(pName, roomCode);
                     }
                     RTSAudioManager.Instance?.PlaySound(RTSSoundType.TechComplete);
                     UpdatePhotonRoomLobbyUI();
@@ -709,6 +762,13 @@ namespace CSE377.Gameplay
 
         public void LaunchMatchFromMenu(bool fromNetworkRpc = false)
         {
+            var net = RTSNetworkSyncManager.Instance;
+            if (!fromNetworkRpc && net != null && net.isMultiplayerMode && !net.CanStartMultiplayerMatch())
+            {
+                SetAiStatus("⚠️ [ODA KİLİDİ] Odaya 2. oyuncu bağlanmadan Çok Oyunculu Sefer başlatılamaz!", new Color(1f, 0.45f, 0.35f));
+                return;
+            }
+
             if (multiplayerLobbyModal != null) multiplayerLobbyModal.SetActive(false);
             if (startScreenModal != null) startScreenModal.SetActive(false);
             Time.timeScale = 1f;
@@ -735,29 +795,105 @@ namespace CSE377.Gameplay
         public void UpdatePhotonRoomLobbyUI()
         {
             var net = RTSNetworkSyncManager.Instance;
+            bool inRoom = (net != null && net.isMultiplayerMode && net.isRoomConnected);
             UnitTeam team = (net != null) ? net.assignedTeam : RTSGameManager.LocalPlayerTeam;
             string roomCode = (net != null && !string.IsNullOrEmpty(net.matchRoomId)) ? net.matchRoomId : "ODA-101";
+
+            if (mpPlayerNameInput != null && string.IsNullOrEmpty(mpPlayerNameInput.text) && net != null)
+            {
+                mpPlayerNameInput.text = net.localPlayerName;
+            }
 
             if (startScreenRoomInput != null && string.IsNullOrEmpty(startScreenRoomInput.text))
             {
                 startScreenRoomInput.text = roomCode;
             }
 
+            // Açık Odalar Listesini Güncelle
+            var openRooms = (net != null) ? net.ActiveOpenRooms : null;
+            int roomCount = (openRooms != null) ? openRooms.Count : 0;
+
+            if (mpNoOpenRoomsText != null)
+            {
+                mpNoOpenRoomsText.gameObject.SetActive(roomCount == 0);
+            }
+
+            if (mpOpenRoomRowBtns != null && mpOpenRoomRowTexts != null)
+            {
+                for (int i = 0; i < mpOpenRoomRowBtns.Length; i++)
+                {
+                    var rowBtn = mpOpenRoomRowBtns[i];
+                    var rowTxt = (i < mpOpenRoomRowTexts.Length) ? mpOpenRoomRowTexts[i] : null;
+                    if (rowBtn == null) continue;
+
+                    if (i < roomCount)
+                    {
+                        var rInfo = openRooms[i];
+                        rowBtn.gameObject.SetActive(true);
+                        bool isCurrentRoom = inRoom && string.Equals(rInfo.roomName, net.matchRoomId, StringComparison.OrdinalIgnoreCase);
+                        string stateTag = isCurrentRoom
+                            ? (rInfo.playerCount >= 2 ? "[BAĞLI - 2/2 HAZIR]" : "[ODADASINIZ - 1/2 BEKLENİYOR]")
+                            : (rInfo.playerCount >= 2 ? "[DOLU - 2/2]" : $"[{rInfo.playerCount}/2 AÇIK]  •  KATIL ►");
+
+                        if (rowTxt != null)
+                        {
+                            rowTxt.text = $"🏰 {rInfo.roomName}   •   Kurucu: {rInfo.hostName}   •   Harita: {rInfo.mapType}   •   {stateTag}";
+                        }
+
+                        var rowImg = rowBtn.GetComponent<Image>();
+                        if (rowImg != null)
+                        {
+                            rowImg.color = isCurrentRoom
+                                ? new Color(0.14f, 0.42f, 0.26f, 0.95f)
+                                : new Color(0.14f, 0.22f, 0.36f, 0.95f);
+                        }
+
+                        string targetRoomName = rInfo.roomName;
+                        rowBtn.onClick.RemoveAllListeners();
+                        rowBtn.onClick.AddListener(() =>
+                        {
+                            if (RTSNetworkSyncManager.Instance != null)
+                            {
+                                string pName = (mpPlayerNameInput != null && !string.IsNullOrWhiteSpace(mpPlayerNameInput.text))
+                                    ? mpPlayerNameInput.text.Trim()
+                                    : RTSNetworkSyncManager.Instance.localPlayerName;
+                                if (startScreenRoomInput != null) startScreenRoomInput.text = targetRoomName;
+                                RTSNetworkSyncManager.Instance.JoinPhotonRoom(pName, targetRoomName);
+                                RTSAudioManager.Instance?.PlaySound(RTSSoundType.TechComplete);
+                                UpdatePhotonRoomLobbyUI();
+                            }
+                        });
+                    }
+                    else
+                    {
+                        rowBtn.gameObject.SetActive(false);
+                    }
+                }
+            }
+
             if (startScreenTeamBtnText != null)
             {
-                startScreenTeamBtnText.text = (team == UnitTeam.Enemy)
-                    ? "🔴 2. OYUNCU (CLIENT): KIRMIZI KRALLIK + KIRMIZI AI KOMUTAN"
-                    : "🔵 1. OYUNCU (HOST): MAVİ KRALLIK + MAVİ AI KOMUTAN";
+                if (!inRoom)
+                {
+                    startScreenTeamBtnText.text = "⚖️ ROLÜNÜZ: Oda Açarsanız 🔵 Mavi (Host)  |  Katılırsanız 🔴 Kırmızı (Client)";
+                }
+                else
+                {
+                    startScreenTeamBtnText.text = (team == UnitTeam.Enemy)
+                        ? $"🔴 2. OYUNCU ({net.localPlayerName}): KIRMIZI KRALLIK + KIRMIZI AI KOMUTAN"
+                        : $"🔵 1. OYUNCU ({net.localPlayerName}): MAVİ KRALLIK + MAVİ AI KOMUTAN";
+                }
             }
 
             if (startScreenTeamBtn != null)
             {
+                startScreenTeamBtn.interactable = inRoom;
                 var img = startScreenTeamBtn.GetComponent<Image>();
                 if (img != null)
                 {
-                    img.color = (team == UnitTeam.Enemy)
-                        ? new Color(0.62f, 0.16f, 0.16f)
-                        : new Color(0.12f, 0.34f, 0.68f);
+                    img.color = !inRoom
+                        ? new Color(0.18f, 0.20f, 0.26f)
+                        : ((team == UnitTeam.Enemy) ? new Color(0.62f, 0.16f, 0.16f) : new Color(0.12f, 0.34f, 0.68f));
                 }
             }
 
@@ -765,10 +901,43 @@ namespace CSE377.Gameplay
             {
                 startScreenRoomStatusText.text = (net != null)
                     ? net.roomStatusMessage
-                    : "🟢 Tek Oyunculu (PvE) • Mavi Krallık + Mavi AI Komutanı";
-                startScreenRoomStatusText.color = (team == UnitTeam.Enemy)
-                    ? new Color(1.0f, 0.78f, 0.75f)
-                    : new Color(0.75f, 0.95f, 0.85f);
+                    : "ℹ️ Odaya girmek için yeni bir oda açın veya açık odalardan birine katılın.";
+                startScreenRoomStatusText.color = (net != null && net.CanStartMultiplayerMatch())
+                    ? new Color(0.45f, 1.0f, 0.55f)
+                    : new Color(0.95f, 0.85f, 0.55f);
+            }
+
+            // Odaya 2. oyuncu bağlanmadan Sefer Başlatma Butonunu kilitle!
+            bool canStartMp = (net != null && net.CanStartMultiplayerMatch());
+            if (mpLobbyStartMatchBtn != null)
+            {
+                mpLobbyStartMatchBtn.interactable = canStartMp;
+                var btnImg = mpLobbyStartMatchBtn.GetComponent<Image>();
+                if (btnImg != null)
+                {
+                    btnImg.color = canStartMp
+                        ? new Color(0.12f, 0.58f, 0.26f, 1f)
+                        : new Color(0.25f, 0.25f, 0.28f, 0.85f);
+                }
+            }
+
+            if (mpLobbyStartMatchBtnText != null)
+            {
+                if (!inRoom)
+                {
+                    mpLobbyStartMatchBtnText.text = "🔒 ÖNCE ODA AÇIN VEYA KATILIN";
+                    mpLobbyStartMatchBtnText.color = new Color(0.75f, 0.75f, 0.78f);
+                }
+                else if (!canStartMp)
+                {
+                    mpLobbyStartMatchBtnText.text = "⏳ RAKİP OYUNCU BEKLENİYOR (1/2)";
+                    mpLobbyStartMatchBtnText.color = new Color(1.0f, 0.85f, 0.45f);
+                }
+                else
+                {
+                    mpLobbyStartMatchBtnText.text = "⚔️ SEFERİ BAŞLAT (2/2 HAZIR) ⚔️";
+                    mpLobbyStartMatchBtnText.color = Color.white;
+                }
             }
         }
 
