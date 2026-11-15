@@ -21,7 +21,9 @@ namespace CSE377.Gameplay
     {
         public string roomName;
         public string hostName;
+        public string hostInstanceId;
         public string guestName;
+        public string guestInstanceId;
         public string mapType;
         public int playerCount;
         public long lastUpdatedTicks;
@@ -49,9 +51,12 @@ namespace CSE377.Gameplay
 
         [Header("Photon Oda & Oyuncu Kimliği Ayarları")]
         public string photonAppId = "7c859265-f091-4544-8c74-d8cd7710b387";
+        public string clientInstanceId = "";
         public string localPlayerName = "Komutan";
         public string hostPlayerName = "";
+        public string hostInstanceId = "";
         public string guestPlayerName = "";
+        public string guestInstanceId = "";
         public string matchRoomId = "ODA-101";
         public bool isMultiplayerMode = false;
         public bool isRoomConnected = false;
@@ -90,6 +95,7 @@ namespace CSE377.Gameplay
             public string appId;
             public string room;
             public string senderName;
+            public string senderInstanceId;
             public string type;     // HELLO, PLAN, SPAWN_UNIT, SPAWN_BLD, MOVE_ORDER, ATTACK_ORDER, VILLAGER_ORDER, MAP_SYNC, MATCH_START
             public string team;     // Player / Enemy
             public string payload;  // JSON veya parametre dizgesi
@@ -100,6 +106,7 @@ namespace CSE377.Gameplay
             if (Instance == null)
             {
                 Instance = this;
+                clientInstanceId = Guid.NewGuid().ToString("N").Substring(0, 8);
                 localPlayerName = $"Komutan_{UnityEngine.Random.Range(100, 999)}";
             }
             else
@@ -147,7 +154,11 @@ namespace CSE377.Gameplay
                 }
 
                 bool udpPeerAlive = (Time.unscaledTime - lastRemoteHeartbeatTime < 6.0f);
-                bool registryPeerAlive = !string.IsNullOrEmpty(guestPlayerName) && !string.IsNullOrEmpty(hostPlayerName);
+                bool registryPeerAlive = !string.IsNullOrEmpty(guestPlayerName)
+                    && !string.IsNullOrEmpty(hostPlayerName)
+                    && !string.IsNullOrEmpty(hostInstanceId)
+                    && !string.IsNullOrEmpty(guestInstanceId)
+                    && hostInstanceId != guestInstanceId;
                 int expectedCount = (udpPeerAlive || registryPeerAlive) ? 2 : 1;
 
                 if (connectedPlayersCount != expectedCount)
@@ -200,6 +211,28 @@ namespace CSE377.Gameplay
         }
 
         /// <summary>
+        /// Açık olan odayı kapatır (Host ise) veya mevcut odadan ayrılır (Guest ise) ve Oda Listesi ekranına döner.
+        /// </summary>
+        public void LeaveCurrentRoom()
+        {
+            RemoveOwnRoomFromRegistry();
+            CloseUdpSocket();
+            isRoomConnected = false;
+            isHost = true;
+            assignedTeam = UnitTeam.Player;
+            connectedPlayersCount = 0;
+            hostPlayerName = "";
+            hostInstanceId = "";
+            guestPlayerName = "";
+            guestInstanceId = "";
+            lastRemoteHeartbeatTime = -999f;
+
+            RefreshOpenRoomsRegistry();
+            RefreshStatusMessage();
+            OnRoomStateChanged?.Invoke();
+        }
+
+        /// <summary>
         /// Oyunu Tek Oyunculu (PvE) moda geçirir ve varsa açık odadan ayrılır.
         /// </summary>
         public void SetSinglePlayerMode()
@@ -212,7 +245,10 @@ namespace CSE377.Gameplay
             assignedTeam = UnitTeam.Player;
             connectedPlayersCount = 0;
             hostPlayerName = "";
+            hostInstanceId = "";
             guestPlayerName = "";
+            guestInstanceId = "";
+            lastRemoteHeartbeatTime = -999f;
             enableRivalAi = true;
 
             RTSGameManager.LocalPlayerTeam = UnitTeam.Player;
@@ -245,20 +281,56 @@ namespace CSE377.Gameplay
         /// </summary>
         public void CreatePhotonRoom(string playerName, string roomCode)
         {
+            if (isRoomConnected)
+            {
+                RemoveOwnRoomFromRegistry();
+            }
             if (!string.IsNullOrWhiteSpace(playerName)) localPlayerName = playerName.Trim();
             hostPlayerName = localPlayerName;
+            hostInstanceId = clientInstanceId;
             guestPlayerName = "";
+            guestInstanceId = "";
+            lastRemoteHeartbeatTime = -999f;
             ConnectToPhotonRoom(roomCode, UnitTeam.Player);
         }
 
         /// <summary>
         /// Açık bir Photon Odasına 2. Oyuncu olarak katılır (Client / Kırmızı Krallık + Kırmızı AI Komutan).
+        /// Eğer oyuncu kendi açtığı odaya tıklarsa kendi odasında 2. oyuncu olarak kopyalanmaz (1/2 Host olarak kalır).
         /// </summary>
         public void JoinPhotonRoom(string playerName, string roomCode)
         {
             if (!string.IsNullOrWhiteSpace(playerName)) localPlayerName = playerName.Trim();
+            string normalizedRoom = string.IsNullOrWhiteSpace(roomCode) ? "ODA-101" : roomCode.Trim().ToUpperInvariant();
+
+            // Kendi açtığımız odaya aynı istemciden 2. oyuncu olarak girmeyi engelle!
+            var existingRoom = activeOpenRooms.Find(r => r != null && string.Equals(r.roomName, normalizedRoom, StringComparison.OrdinalIgnoreCase));
+            bool isOwnHostedRoom = (existingRoom != null && existingRoom.hostInstanceId == clientInstanceId)
+                || (isRoomConnected && isHost && string.Equals(matchRoomId, normalizedRoom, StringComparison.OrdinalIgnoreCase));
+
+            if (isOwnHostedRoom)
+            {
+                hostPlayerName = localPlayerName;
+                hostInstanceId = clientInstanceId;
+                ConnectToPhotonRoom(normalizedRoom, UnitTeam.Player);
+                return;
+            }
+
+            if (isRoomConnected && !string.Equals(matchRoomId, normalizedRoom, StringComparison.OrdinalIgnoreCase))
+            {
+                RemoveOwnRoomFromRegistry();
+            }
+
+            if (existingRoom != null)
+            {
+                hostPlayerName = existingRoom.hostName;
+                hostInstanceId = existingRoom.hostInstanceId;
+            }
+
             guestPlayerName = localPlayerName;
-            ConnectToPhotonRoom(roomCode, UnitTeam.Enemy);
+            guestInstanceId = clientInstanceId;
+            lastRemoteHeartbeatTime = -999f;
+            ConnectToPhotonRoom(normalizedRoom, UnitTeam.Enemy);
         }
 
         /// <summary>
@@ -276,13 +348,25 @@ namespace CSE377.Gameplay
             if (isHost)
             {
                 hostPlayerName = localPlayerName;
+                hostInstanceId = clientInstanceId;
+                if (guestInstanceId == clientInstanceId)
+                {
+                    guestPlayerName = "";
+                    guestInstanceId = "";
+                }
             }
             else
             {
                 guestPlayerName = localPlayerName;
+                guestInstanceId = clientInstanceId;
             }
 
-            connectedPlayersCount = (!string.IsNullOrEmpty(hostPlayerName) && !string.IsNullOrEmpty(guestPlayerName)) ? 2 : 1;
+            bool hasDistinctBoth = !string.IsNullOrEmpty(hostPlayerName)
+                && !string.IsNullOrEmpty(guestPlayerName)
+                && !string.IsNullOrEmpty(hostInstanceId)
+                && !string.IsNullOrEmpty(guestInstanceId)
+                && hostInstanceId != guestInstanceId;
+            connectedPlayersCount = hasDistinctBoth ? 2 : 1;
 
             RTSGameManager.LocalPlayerTeam = assignedTeam;
             RTSGameManager.IsMultiplayerPvP = true;
@@ -344,7 +428,7 @@ namespace CSE377.Gameplay
 
                 long nowTicks = DateTime.UtcNow.Ticks;
                 long expireWindowTicks = TimeSpan.FromSeconds(7.5).Ticks;
-                reg.rooms.RemoveAll(r => r == null || string.IsNullOrEmpty(r.roomName) || (nowTicks - r.lastUpdatedTicks) > expireWindowTicks);
+                reg.rooms.RemoveAll(r => r == null || string.IsNullOrEmpty(r.roomName) || string.IsNullOrEmpty(r.hostInstanceId) || (nowTicks - r.lastUpdatedTicks) > expireWindowTicks);
 
                 if (isMultiplayerMode && isRoomConnected)
                 {
@@ -355,13 +439,18 @@ namespace CSE377.Gameplay
                         {
                             roomName = matchRoomId,
                             hostName = isHost ? localPlayerName : (string.IsNullOrEmpty(hostPlayerName) ? "Kurucu" : hostPlayerName),
-                            guestName = !isHost ? localPlayerName : guestPlayerName,
+                            hostInstanceId = isHost ? clientInstanceId : hostInstanceId,
+                            guestName = !isHost ? localPlayerName : "",
+                            guestInstanceId = !isHost ? clientInstanceId : "",
                             mapType = RTSAutoBootstrap.SelectedMap.ToString(),
                             playerCount = 1,
                             lastUpdatedTicks = nowTicks,
                             matchStarted = false
                         };
-                        reg.rooms.Add(myRoom);
+                        if (isHost)
+                        {
+                            reg.rooms.Add(myRoom);
+                        }
                     }
                     else
                     {
@@ -369,18 +458,34 @@ namespace CSE377.Gameplay
                         if (isHost)
                         {
                             myRoom.hostName = localPlayerName;
+                            myRoom.hostInstanceId = clientInstanceId;
                             myRoom.mapType = RTSAutoBootstrap.SelectedMap.ToString();
-                            if (!string.IsNullOrEmpty(myRoom.guestName))
+
+                            if (myRoom.guestInstanceId == clientInstanceId)
+                            {
+                                myRoom.guestName = "";
+                                myRoom.guestInstanceId = "";
+                            }
+
+                            if (!string.IsNullOrEmpty(myRoom.guestName) && !string.IsNullOrEmpty(myRoom.guestInstanceId) && myRoom.guestInstanceId != clientInstanceId)
                             {
                                 guestPlayerName = myRoom.guestName;
+                                guestInstanceId = myRoom.guestInstanceId;
+                            }
+                            else
+                            {
+                                guestPlayerName = "";
+                                guestInstanceId = "";
                             }
                         }
                         else
                         {
                             myRoom.guestName = localPlayerName;
+                            myRoom.guestInstanceId = clientInstanceId;
                             if (!string.IsNullOrEmpty(myRoom.hostName))
                             {
                                 hostPlayerName = myRoom.hostName;
+                                hostInstanceId = myRoom.hostInstanceId;
                             }
                             if (!string.IsNullOrEmpty(myRoom.mapType) && Enum.TryParse(myRoom.mapType, out RTSMapType hostMap) && RTSAutoBootstrap.SelectedMap != hostMap)
                             {
@@ -388,7 +493,11 @@ namespace CSE377.Gameplay
                                 RTSHUDController.Instance?.UpdateMapSelectionUI();
                             }
                         }
-                        myRoom.playerCount = (!string.IsNullOrEmpty(myRoom.hostName) && !string.IsNullOrEmpty(myRoom.guestName)) ? 2 : 1;
+
+                        bool hasValidGuest = !string.IsNullOrEmpty(myRoom.guestName)
+                            && !string.IsNullOrEmpty(myRoom.guestInstanceId)
+                            && myRoom.guestInstanceId != myRoom.hostInstanceId;
+                        myRoom.playerCount = (!string.IsNullOrEmpty(myRoom.hostName) && hasValidGuest) ? 2 : 1;
                     }
 
                     int newCount = myRoom.playerCount;
@@ -402,7 +511,9 @@ namespace CSE377.Gameplay
                     if (!isHost && myRoom.matchStarted)
                     {
                         var hud = RTSHUDController.Instance;
-                        if (hud != null && ((hud.startScreenModal != null && hud.startScreenModal.activeSelf) || (hud.multiplayerLobbyModal != null && hud.multiplayerLobbyModal.activeSelf)))
+                        if (hud != null && ((hud.startScreenModal != null && hud.startScreenModal.activeSelf)
+                            || (hud.multiplayerLobbyModal != null && hud.multiplayerLobbyModal.activeSelf)
+                            || (hud.activeRoomModal != null && hud.activeRoomModal.activeSelf)))
                         {
                             hud.LaunchMatchFromMenu(fromNetworkRpc: true);
                         }
@@ -439,9 +550,10 @@ namespace CSE377.Gameplay
                 else
                 {
                     var r = reg.rooms.Find(x => x != null && string.Equals(x.roomName, matchRoomId, StringComparison.OrdinalIgnoreCase));
-                    if (r != null)
+                    if (r != null && r.guestInstanceId == clientInstanceId)
                     {
                         r.guestName = "";
+                        r.guestInstanceId = "";
                         r.playerCount = 1;
                     }
                 }
@@ -459,10 +571,10 @@ namespace CSE377.Gameplay
             }
 
             string p1Name = !string.IsNullOrEmpty(hostPlayerName) ? hostPlayerName : (isHost ? localPlayerName : "Bekleniyor...");
-            string p2Name = !string.IsNullOrEmpty(guestPlayerName) ? guestPlayerName : (!isHost ? localPlayerName : "Bekleniyor...");
+            string p2Name = (connectedPlayersCount >= 2 && !string.IsNullOrEmpty(guestPlayerName)) ? guestPlayerName : "Bekleniyor...";
 
             string readyStr = (connectedPlayersCount >= 2)
-                ? "✅ 2/2 OYUNCU HAZIR (Sefer Başlatılabilir!)"
+                ? "✅ 2/2 OYUNCU HAZIR (Oyun Başlatılabilir!)"
                 : "⏳ 1/2 OYUNCU (Rakip Oyuncu Bağlanmadan Başlatılamaz)";
 
             roomStatusMessage = $"🏰 ODA: [{matchRoomId}]  •  🔵 Mavi: {p1Name}  ⚔️  🔴 Kırmızı: {p2Name}  •  {readyStr}";
@@ -524,6 +636,7 @@ namespace CSE377.Gameplay
                     appId = photonAppId,
                     room = matchRoomId,
                     senderName = localPlayerName,
+                    senderInstanceId = clientInstanceId,
                     type = packetType,
                     team = assignedTeam.ToString(),
                     payload = payloadStr
@@ -542,13 +655,22 @@ namespace CSE377.Gameplay
             {
                 var pkt = JsonUtility.FromJson<NetworkPacket>(rawJson);
                 if (pkt == null || pkt.room != matchRoomId) return;
+                if (!string.IsNullOrEmpty(pkt.senderInstanceId) && pkt.senderInstanceId == clientInstanceId) return;
 
                 lastRemoteHeartbeatTime = Time.unscaledTime;
                 UnitTeam senderTeam = (pkt.team == "Enemy") ? UnitTeam.Enemy : UnitTeam.Player;
                 if (!string.IsNullOrEmpty(pkt.senderName))
                 {
-                    if (senderTeam == UnitTeam.Player) hostPlayerName = pkt.senderName;
-                    else guestPlayerName = pkt.senderName;
+                    if (senderTeam == UnitTeam.Player)
+                    {
+                        hostPlayerName = pkt.senderName;
+                        if (!string.IsNullOrEmpty(pkt.senderInstanceId)) hostInstanceId = pkt.senderInstanceId;
+                    }
+                    else
+                    {
+                        guestPlayerName = pkt.senderName;
+                        if (!string.IsNullOrEmpty(pkt.senderInstanceId)) guestInstanceId = pkt.senderInstanceId;
+                    }
                 }
 
                 if (pkt.type == "HELLO")

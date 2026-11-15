@@ -168,6 +168,14 @@ namespace CSE377.Gameplay
         public Text mpLobbyStartMatchBtnText;
         public Button mpLobbyBackBtn;
 
+        [Header("Açılan Oda Penceresi (Active Room Modal - Oyun Başlat / Oyun Ayarları / Odayı Kapat)")]
+        public GameObject activeRoomModal;
+        public Text activeRoomTitleText;
+        public Text activeRoomBlueSlotText;
+        public Text activeRoomRedSlotText;
+        public Button activeRoomSettingsBtn;
+        public Button activeRoomCloseBtn;
+
         [Header("Nasıl Oynanır / Kısayollar Modalı")]
         public GameObject controlsGuideModal;
         public Button controlsGuideCloseBtn;
@@ -397,8 +405,13 @@ namespace CSE377.Gameplay
                             : "ODA-101";
                         RTSNetworkSyncManager.Instance.CreatePhotonRoom(pName, rCode);
                     }
+                    if (activeRoomModal != null)
+                    {
+                        activeRoomModal.SetActive(true);
+                    }
                     RTSAudioManager.Instance?.PlaySound(RTSSoundType.TechComplete);
                     UpdatePhotonRoomLobbyUI();
+                    UpdateMapSelectionUI();
                 });
             }
 
@@ -416,6 +429,10 @@ namespace CSE377.Gameplay
             {
                 mpLobbyBackBtn.onClick.AddListener(() =>
                 {
+                    if (activeRoomModal != null)
+                    {
+                        activeRoomModal.SetActive(false);
+                    }
                     if (multiplayerLobbyModal != null)
                     {
                         multiplayerLobbyModal.SetActive(false);
@@ -424,6 +441,25 @@ namespace CSE377.Gameplay
                     RTSAudioManager.Instance?.PlaySound(RTSSoundType.Click);
                     UpdatePhotonRoomLobbyUI();
                 });
+            }
+
+            if (activeRoomCloseBtn != null)
+            {
+                activeRoomCloseBtn.onClick.AddListener(() =>
+                {
+                    RTSNetworkSyncManager.Instance?.LeaveCurrentRoom();
+                    if (activeRoomModal != null)
+                    {
+                        activeRoomModal.SetActive(false);
+                    }
+                    RTSAudioManager.Instance?.PlaySound(RTSSoundType.Click);
+                    UpdatePhotonRoomLobbyUI();
+                });
+            }
+
+            if (activeRoomSettingsBtn != null)
+            {
+                activeRoomSettingsBtn.onClick.AddListener(OpenSettingsModal);
             }
 
             if (mpLobbyStartMatchBtn != null)
@@ -436,7 +472,7 @@ namespace CSE377.Gameplay
                         RTSAudioManager.Instance?.PlaySound(RTSSoundType.Click);
                         if (startScreenRoomStatusText != null)
                         {
-                            startScreenRoomStatusText.text = "⚠️ Odaya 2. oyuncu bağlanmadan (2/2 olmadan) Çok Oyunculu Sefer başlatılamaz!";
+                            startScreenRoomStatusText.text = "⚠️ Odaya 2. oyuncu bağlanmadan (2/2 olmadan) Çok Oyunculu Oyun başlatılamaz!";
                             startScreenRoomStatusText.color = new Color(1f, 0.45f, 0.35f);
                         }
                         return;
@@ -464,8 +500,13 @@ namespace CSE377.Gameplay
                             : "ODA-101";
                         RTSNetworkSyncManager.Instance.JoinPhotonRoom(pName, roomCode);
                     }
+                    if (activeRoomModal != null)
+                    {
+                        activeRoomModal.SetActive(true);
+                    }
                     RTSAudioManager.Instance?.PlaySound(RTSSoundType.TechComplete);
                     UpdatePhotonRoomLobbyUI();
+                    UpdateMapSelectionUI();
                 });
             }
 
@@ -769,6 +810,8 @@ namespace CSE377.Gameplay
                 return;
             }
 
+            if (activeRoomModal != null) activeRoomModal.SetActive(false);
+            if (activeRoomModal != null) activeRoomModal.SetActive(false);
             if (multiplayerLobbyModal != null) multiplayerLobbyModal.SetActive(false);
             if (startScreenModal != null) startScreenModal.SetActive(false);
             Time.timeScale = 1f;
@@ -830,10 +873,10 @@ namespace CSE377.Gameplay
                     {
                         var rInfo = openRooms[i];
                         rowBtn.gameObject.SetActive(true);
-                        bool isCurrentRoom = inRoom && string.Equals(rInfo.roomName, net.matchRoomId, StringComparison.OrdinalIgnoreCase);
-                        string stateTag = isCurrentRoom
-                            ? (rInfo.playerCount >= 2 ? "[BAĞLI - 2/2 HAZIR]" : "[ODADASINIZ - 1/2 BEKLENİYOR]")
-                            : (rInfo.playerCount >= 2 ? "[DOLU - 2/2]" : $"[{rInfo.playerCount}/2 AÇIK]  •  KATIL ►");
+                        bool isOwnHosted = (net != null && rInfo.hostInstanceId == net.clientInstanceId);
+                        string stateTag = isOwnHosted
+                            ? (rInfo.playerCount >= 2 ? "[SİZİN ODANIZ - 2/2 HAZIR • ODAYI AÇ ►]" : "[SİZİN ODANIZ - 1/2 BEKLENİYOR • ODAYI AÇ ►]")
+                            : (rInfo.playerCount >= 2 ? "[DOLU - 2/2]" : $"[{rInfo.playerCount}/2 AÇIK]  •  ODAYA KATIL ►");
 
                         if (rowTxt != null)
                         {
@@ -843,7 +886,7 @@ namespace CSE377.Gameplay
                         var rowImg = rowBtn.GetComponent<Image>();
                         if (rowImg != null)
                         {
-                            rowImg.color = isCurrentRoom
+                            rowImg.color = isOwnHosted
                                 ? new Color(0.14f, 0.42f, 0.26f, 0.95f)
                                 : new Color(0.14f, 0.22f, 0.36f, 0.95f);
                         }
@@ -859,8 +902,13 @@ namespace CSE377.Gameplay
                                     : RTSNetworkSyncManager.Instance.localPlayerName;
                                 if (startScreenRoomInput != null) startScreenRoomInput.text = targetRoomName;
                                 RTSNetworkSyncManager.Instance.JoinPhotonRoom(pName, targetRoomName);
+                                if (activeRoomModal != null)
+                                {
+                                    activeRoomModal.SetActive(true);
+                                }
                                 RTSAudioManager.Instance?.PlaySound(RTSSoundType.TechComplete);
                                 UpdatePhotonRoomLobbyUI();
+                                UpdateMapSelectionUI();
                             }
                         });
                     }
@@ -868,6 +916,40 @@ namespace CSE377.Gameplay
                     {
                         rowBtn.gameObject.SetActive(false);
                     }
+                }
+            }
+
+            // Oda İçi Penceresi (ActiveRoom_Modal) Bilgilerini Güncelle
+            if (activeRoomTitleText != null)
+            {
+                activeRoomTitleText.text = $"🏰  ODA: [{roomCode}]  —  SAVAŞ DİVANI & OYUN AYARLARI";
+            }
+
+            string p1Name = (net != null && !string.IsNullOrEmpty(net.hostPlayerName))
+                ? net.hostPlayerName
+                : (net != null && net.isHost ? net.localPlayerName : "Bekleniyor...");
+
+            bool hasSecondPlayer = (net != null && net.connectedPlayersCount >= 2 && !string.IsNullOrEmpty(net.guestPlayerName));
+            string p2Name = hasSecondPlayer ? net.guestPlayerName : "Rakip Oyuncu Bekleniyor...";
+
+            if (activeRoomBlueSlotText != null)
+            {
+                string youTag = (net != null && net.isHost) ? " (SİZ - KURUCU)" : " (ODA KURUCUSU)";
+                activeRoomBlueSlotText.text = $"🔵 1. OYUNCU: MAVİ KRALLIK + MAVİ AI KOMUTAN\n👑 Komutan: {p1Name}{youTag}   •   ✅ HAZIR";
+            }
+
+            if (activeRoomRedSlotText != null)
+            {
+                if (hasSecondPlayer)
+                {
+                    string youTag = (net != null && !net.isHost) ? " (SİZ - KATILIMCI)" : " (RAKİP KOMUTAN)";
+                    activeRoomRedSlotText.text = $"🔴 2. OYUNCU: KIRMIZI KRALLIK + KIRMIZI AI KOMUTAN\n⚔️ Komutan: {p2Name}{youTag}   •   ✅ BAĞLANDI (2/2 HAZIR)";
+                    activeRoomRedSlotText.color = new Color(1.0f, 0.88f, 0.88f);
+                }
+                else
+                {
+                    activeRoomRedSlotText.text = "🔴 2. OYUNCU: KIRMIZI KRALLIK + KIRMIZI AI KOMUTAN\n⏳ Rakip Oyuncu Bekleniyor... (1/2 — Başka Oyuncu Odaya Katıldığında Dolacak)";
+                    activeRoomRedSlotText.color = new Color(0.95f, 0.82f, 0.55f);
                 }
             }
 
@@ -907,7 +989,7 @@ namespace CSE377.Gameplay
                     : new Color(0.95f, 0.85f, 0.55f);
             }
 
-            // Odaya 2. oyuncu bağlanmadan Sefer Başlatma Butonunu kilitle!
+            // Odaya 2. oyuncu bağlanmadan Oyunu Başlat Butonunu kilitle!
             bool canStartMp = (net != null && net.CanStartMultiplayerMatch());
             if (mpLobbyStartMatchBtn != null)
             {
@@ -935,7 +1017,7 @@ namespace CSE377.Gameplay
                 }
                 else
                 {
-                    mpLobbyStartMatchBtnText.text = "⚔️ SEFERİ BAŞLAT (2/2 HAZIR) ⚔️";
+                    mpLobbyStartMatchBtnText.text = "⚔️ OYUNU BAŞLAT (2/2 HAZIR) ⚔️";
                     mpLobbyStartMatchBtnText.color = Color.white;
                 }
             }
@@ -1016,6 +1098,12 @@ namespace CSE377.Gameplay
                 else if (controlsGuideModal != null && controlsGuideModal.activeSelf)
                 {
                     controlsGuideModal.SetActive(false);
+                }
+                else if (activeRoomModal != null && activeRoomModal.activeSelf)
+                {
+                    RTSNetworkSyncManager.Instance?.LeaveCurrentRoom();
+                    activeRoomModal.SetActive(false);
+                    UpdatePhotonRoomLobbyUI();
                 }
                 else if (multiplayerLobbyModal != null && multiplayerLobbyModal.activeSelf)
                 {
@@ -1139,6 +1227,7 @@ namespace CSE377.Gameplay
             if (pauseMenuModal != null) pauseMenuModal.SetActive(false);
             if (gameOverModal != null) gameOverModal.SetActive(false);
             if (controlsGuideModal != null) controlsGuideModal.SetActive(false);
+            if (activeRoomModal != null) activeRoomModal.SetActive(false);
             if (multiplayerLobbyModal != null) multiplayerLobbyModal.SetActive(false);
             if (inspectorPanel != null) inspectorPanel.SetActive(false);
             HideActionPanel();
