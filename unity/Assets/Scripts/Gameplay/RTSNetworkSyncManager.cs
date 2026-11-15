@@ -29,6 +29,7 @@ namespace CSE377.Gameplay
         public static RTSNetworkSyncManager Instance { get; private set; }
 
         [Header("Photon Oda & Eşitleme Ayarları")]
+        public string photonAppId = "7c859265-f091-4544-8c74-d8cd7710b387";
         public string matchRoomId = "ODA-101";
         public bool isMultiplayerMode = false;
         public bool isRoomConnected = false;
@@ -58,6 +59,7 @@ namespace CSE377.Gameplay
         [Serializable]
         private class NetworkPacket
         {
+            public string appId;
             public string room;
             public string type;     // HELLO, PLAN, SPAWN_UNIT, SPAWN_BLD
             public string team;     // Player / Enemy
@@ -196,6 +198,10 @@ namespace CSE377.Gameplay
             }
 
 #if PHOTON_UNITY_NETWORKING
+            if (PhotonNetwork.PhotonServerSettings != null && PhotonNetwork.PhotonServerSettings.AppSettings != null)
+            {
+                PhotonNetwork.PhotonServerSettings.AppSettings.AppIdRealtime = photonAppId;
+            }
             if (!PhotonNetwork.IsConnected)
             {
                 PhotonNetwork.AutomaticallySyncScene = true;
@@ -219,7 +225,7 @@ namespace CSE377.Gameplay
             string teamTitle = (assignedTeam == UnitTeam.Player)
                 ? "1. OYUNCU (MAVİ KRALLIK + MAVİ AI KOMUTAN)"
                 : "2. OYUNCU (KIRMIZI KRALLIK + KIRMIZI AI KOMUTAN)";
-            Debug.Log($"[PHOTON ODA SİSTEMİ] '{matchRoomId}' odasına bağlanıldı! Rol: {teamTitle}");
+            Debug.Log($"[PHOTON ODA SİSTEMİ] AppID ({photonAppId}) ile '{matchRoomId}' odasına bağlanıldı! Rol: {teamTitle}");
         }
 
         private void RefreshStatusMessage()
@@ -238,7 +244,11 @@ namespace CSE377.Gameplay
                 ? "2/2 Oyuncu Bağlı (Eşzamanlı Senkron)"
                 : "1/2 Oyuncu (Diğer Oyuncu Bekleniyor / Hazır)";
 
-            roomStatusMessage = $"🌐 PHOTON ODA: [{matchRoomId}]  •  {roleStr}  •  {peerStr}";
+            string shortAppId = (!string.IsNullOrEmpty(photonAppId) && photonAppId.Length >= 8)
+                ? photonAppId.Substring(0, 8)
+                : photonAppId;
+
+            roomStatusMessage = $"🌐 PHOTON [{shortAppId}] ODA: [{matchRoomId}]  •  {roleStr}  •  {peerStr}";
         }
 
         private void StartUdpRoomSocket()
@@ -294,6 +304,7 @@ namespace CSE377.Gameplay
             {
                 var pkt = new NetworkPacket
                 {
+                    appId = photonAppId,
                     room = matchRoomId,
                     type = packetType,
                     team = assignedTeam.ToString(),
