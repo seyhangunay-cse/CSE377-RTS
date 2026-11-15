@@ -1,0 +1,169 @@
+[
+  {
+    "id": "spearman",
+    "name": "Spearman",
+    "display_name": "Mızrakçı",
+    "category": "infantry",
+    "cost": {
+      "food": 60,
+      "wood": 0,
+      "gold": 20
+    },
+    "stats": {
+      "hp": 90,
+      "attack": 8,
+      "bonus_vs_cavalry": 18,
+      "defense": 3,
+      "range": 1,
+      "speed": 1.0,
+      "train_time_seconds": 18
+    },
+    "required_building": "barracks",
+    "counters": ["cavalry", "scout_cavalry", "knight"],
+    "weak_against": ["archer", "crossbowman", "swordsman"],
+    "description": "Süvarilere karşı ölümcül savunma birimidir. Düşman atlılarını durdurmak ve kapı geçitlerini savunmak için en etkili ve ekonomik tercihtir. Okçulara karşı savunmasızdır."
+  },
+  {
+    "id": "archer",
+    "name": "Archer",
+    "display_name": "Okçu",
+    "category": "ranged",
+    "cost": {
+      "food": 0,
+      "wood": 50,
+      "gold": 30
+    },
+    "stats": {
+      "hp": 70,
+      "attack": 12,
+      "bonus_vs_infantry": 6,
+      "defense": 1,
+      "range": 5,
+      "speed": 0.9,
+      "train_time_seconds": 22
+    },
+    "required_building": "archery_range",
+    "counters": ["spearman", "villager", "light_infantry"],
+    "weak_against": ["cavalry", "skirmisher", "siege"],
+    "description": "Uzaktan yüksek hasar veren temel menzilli birlik. Yavaş hareket eden piyadelere ve mızrakçılara karşı çok etkilidir. Yakın dövüşe giren hızlı süvarilere karşı dayanıksızdır."
+  },
+  {
+    "id": "cavalry",
+    "name": "Cavalry / Knight",
+    "display_name": "Süvari / Atlı Şövalye",
+    "category": "cavalry",
+    "cost": {
+      "food": 100,
+      "wood": 0,
+      "gold": 80
+    },
+    "stats": {
+      "hp": 160,
+      "attack": 16,
+      "bonus_vs_ranged": 10,
+      "defense": 5,
+      "range": 1,
+      "speed": 1.5,
+      "train_time_seconds": 30
+    },
+    "required_building": "stable",
+    "counters": ["archer", "crossbowman", "trebuchet", "villager"],
+    "weak_against": ["spearman", "pikeman"],
+    "description": "Yüksek hareket hızı ve yüksek can havuzuna sahip baskın birimi. Okçuları ve kuşatma araçlarını kolayca ezer. Ancak mızrakçılara karşı ağır bonus hasar alır ve çabuk elenir."
+  },
+  {
+    "id": "swordsman",
+    "name": "Swordsman",
+    "display_name": "Kılıçlı Piyade",
+    "category": "infantry",
+    "cost": {
+      "food": 60,
+      "wood": 0,
+      "gold": 30
+    },
+    "stats": {
+      "hp": 110,
+      "attack": 14,
+      "bonus_vs_trash": 4,
+      "defense": 4,
+      "range": 1,
+      "speed": 1.0,
+      "train_time_seconds": 20
+    },
+    "required_building": "barracks",
+    "counters": ["spearman", "skirmisher", "buildings"],
+    "weak_against": ["archer", "cavalry", "crossbowman"],
+    "description": "Dengeli yakın dövüş piyadesi. Mızrakçıları ve hafif birlikleri alt eder, binalara makul hasar verir. Ancak menzilli yaylım ateşine veya süvari hücumlarına karşı dikkatli konumlandırılmalıdır."
+  },
+  {
+    "id": "crossbowman",
+    "name": "Crossbowman",
+    "display_name": "Arbaletçi",
+    "category": "ranged",
+    "cost": {
+      "food": 0,
+      "wood": 60,
+      "gold": 40
+    },
+    "stats": {
+      "hp": 75,
+      "attack": 16,
+      "armor_penetration": 5,
+      "defense": 2,
+      "range": 5,
+      "speed": 0.85,
+      "train_time_seconds": 25
+    },
+    "required_building": "archery_range",
+    "counters": ["swordsman", "heavy_infantry", "cavalry"],
+    "weak_against": ["cavalry", "onager", "siege"],
+    "description": "Zırh delici oklar atan gelişmiş menzilli birim. Ağır zırhlı kılıçlılara ve şövalyelere karşı yüksek delici hasar verir. Atış hızı normal okçudan daha yavaştır."
+  },
+  {
+    "id": "trebuchet",
+    "name": "Trebuchet / Catapult",
+    "display_name": "Mancınık / Kuşatma Silahı",
+    "category": "siege",
+    "cost": {
+      "food": 0,
+      "wood": 200,
+      "gold": 150
+    },
+    "stats": {
+      "hp": 150,
+      "attack": 80,
+      "bonus_vs_buildings": 200,
+      "defense": 1,
+      "range": 12,
+      "speed": 0.5,
+      "train_time_seconds": 45
+    },
+    "required_building": "siege_workshop",
+    "counters": ["buildings", "gates", "defensive_towers"],
+    "weak_against": ["cavalry", "spearman", "swordsman"],
+    "description": "Aşırı uzun menzilli kuşatma aracı. Düşman kapılarını, kalelerini ve savunma kulelerini yerle bir etmek için üretilir. Yakın mesafede savunmasızdır; etrafı piyadelerle korunmalıdır."
+  },
+  {
+    "id": "villager",
+    "name": "Villager",
+    "display_name": "Köylü / İşçi",
+    "category": "civilian",
+    "cost": {
+      "food": 50,
+      "wood": 0,
+      "gold": 0
+    },
+    "stats": {
+      "hp": 50,
+      "attack": 3,
+      "defense": 0,
+      "range": 1,
+      "speed": 1.0,
+      "train_time_seconds": 15
+    },
+    "required_building": "town_center",
+    "counters": [],
+    "weak_against": ["cavalry", "archer", "spearman"],
+    "description": "Ekonominin bel kemiği olan temel işçi birimi. Ağaç keser (Odun), maden kazar (Altın) ve yeni binalar (Kışla, Kule, Demirci, Ev) inşa eder. Şehir Merkezinden (Town Center) 50 Yiyecek karşılığında üretilir."
+  }
+]

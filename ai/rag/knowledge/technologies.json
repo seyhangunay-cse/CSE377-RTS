@@ -1,0 +1,87 @@
+[
+  {
+    "id": "Iron_Weapons",
+    "name": "Demir Silahlar",
+    "age_required": "Age_2",
+    "cost": {
+      "food": 100,
+      "wood": 0,
+      "gold": 50
+    },
+    "research_building": "blacksmith",
+    "research_time_seconds": 30,
+    "effects": {
+      "infantry_attack_bonus": 2,
+      "cavalry_attack_bonus": 2
+    },
+    "description": "Piyadelerin ve süvarilerin vuruş gücünü +2 artırır. Mızrakçıların ve kılıçlıların yakın dövüş etkinliğini önemli ölçüde yükseltir."
+  },
+  {
+    "id": "Fletching",
+    "name": "Çelik Ok Uçları (Fletching)",
+    "age_required": "Age_2",
+    "cost": {
+      "food": 100,
+      "wood": 50,
+      "gold": 0
+    },
+    "research_building": "blacksmith",
+    "research_time_seconds": 30,
+    "effects": {
+      "ranged_attack_bonus": 1,
+      "ranged_range_bonus": 1,
+      "tower_range_bonus": 1
+    },
+    "description": "Tüm okçuların ve savunma kulelerinin menzilini +1, saldırı gücünü +1 artırır. Erken aşamada kapı ve üs savunmasını güçlendirir."
+  },
+  {
+    "id": "Scale_Armor",
+    "name": "Pul Zırh (Scale Armor)",
+    "age_required": "Age_2",
+    "cost": {
+      "food": 100,
+      "wood": 0,
+      "gold": 80
+    },
+    "research_building": "blacksmith",
+    "research_time_seconds": 35,
+    "effects": {
+      "infantry_defense_bonus": 2,
+      "cavalry_defense_bonus": 2
+    },
+    "description": "Tüm piyade ve atlı birliklerin zırhını +2 artırarak menzilli oklara ve yakın darbelere karşı hayatta kalma süresini uzatır."
+  },
+  {
+    "id": "Wheelbarrow",
+    "name": "El Arabası (Wheelbarrow)",
+    "age_required": "Age_2",
+    "cost": {
+      "food": 175,
+      "wood": 50,
+      "gold": 0
+    },
+    "research_building": "town_center",
+    "research_time_seconds": 40,
+    "effects": {
+      "villager_carry_capacity_percent": 25,
+      "villager_movement_speed_percent": 10
+    },
+    "description": "Köylülerin kaynak taşıma kapasitesini %25 ve yürüme hızını %10 artırarak genel ekonomi ve kaynak toplama verimliliğini yükseltir."
+  },
+  {
+    "id": "Ballistics",
+    "name": "Balistik (Ballistics)",
+    "age_required": "Age_3",
+    "cost": {
+      "food": 0,
+      "wood": 300,
+      "gold": 175
+    },
+    "research_building": "university",
+    "research_time_seconds": 50,
+    "effects": {
+      "ranged_accuracy_moving_targets": 100
+    },
+    "description": "Okçuların, savunma kulelerinin ve kalelerin hareket halindeki düşman hedeflerini ıskalamadan tam isabetle vurmasını sağlar."
+  }
+]
