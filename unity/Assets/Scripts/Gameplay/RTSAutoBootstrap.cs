@@ -2493,7 +2493,7 @@ namespace CSE377.Gameplay
             userLbl.fontStyle = FontStyle.Bold;
 
             var playerNameInput = CreateUIInputField(mpBox.transform, "PlayerNameInput", "Kullanıcı Adınız...", medievalBodyFont, new Vector2(0.22f, 0.78f), new Vector2(240, 34), new Color(0.04f, 0.05f, 0.08f, 0.98f));
-            playerNameInput.text = netSyncMgr != null ? netSyncMgr.localPlayerName : "Komutan_101";
+            playerNameInput.text = RTSNetworkSyncManager.Instance != null ? RTSNetworkSyncManager.Instance.localPlayerName : "Komutan_101";
             var pNameBorder = playerNameInput.gameObject.AddComponent<Outline>();
             pNameBorder.effectColor = new Color(0.75f, 0.60f, 0.25f, 0.85f);
 
