@@ -1,125 +1,31 @@
-# 🏰 IMPERIUM: MEDIEVAL AGENTS - KAPSAMLI GELİŞTİRME VE MASTER PLANI (PLAN.MD)
+# 🌐 CSE377-RTS: PHOTON 2 KİŞİLİK MULTIPLAYER & ÇİFT AI KOMUTAN MİMARİ PLANI (PLAN.MD)
 
-> **Tarih:** 26 Eylül 2026  
-> **Odak:** Görsel Geliştirme (Visual Polish), Çeşitlilik & Süreklilik (Replayability), 4-5 Farklı Harita Sistemi ve Başlangıçta Harita Seçimi.
-
----
-
-## 🎯 1. STRATEJİK YÖN DEĞİŞİMİ VE KULLANICI VİZYONU
-
-Detaylı UI istatistikleri ve mikro ayarlar yerine, oyunu **gerçekten bir üst seviyeye taşıyacak, görsel olarak etkileyici ve her oyunda farklı bir deneyim sunacak** temel unsurlara odaklanıyoruz:
-
-1. **4-5 Farklı Harita Tasarımı:**
-   * Nehirsiz açık meydanlar, yoğun orman boğazları, köşelerde çapraz üsler ve nehir geçitleri.
-2. **Başlangıç Ekranında Harita Seçimi (Map Selector):**
-   * Oyuncu maça başlamadan önce istediği harita türünü seçebilecek veya `🎲 Rastgele Harita` ile her maçta sürpriz bir sahaya adım atacak.
-3. **Görsel Devrim (Visual Polish & Atmosphere):**
-   * Tekdüze yeşil zemin yerine harita türüne özel zemin renkleri, üs meydanları (cobblestone aprons), yol patikaları, zenginleştirilmiş flora, kayalıklar ve dinamik atmosferik ışıklandırma/sis.
-4. **Haritaya Uyumlu Düşman Akınları & Taktiksel Oynanış (Replayability):**
-   * Düşman akınları haritanın coğrafyasına göre adapte olacak (örneğin bozkırda geniş kanat süvari baskını, kara ormanda dar geçitlerden koçbaşı/mancınık baskını, çapraz haritada uzun vadi hücumu).
+> **Odak:** Photon (PUN 2 / Realtime) üzerinden 2 gerçek oyuncunun (Mavi Krallık vs. Kırmızı Krallık) karşılıklı oynayabilmesi ve **her iki oyuncunun da kendi bağımsız Yapay Zekâ Komutanına** danışıp emir onaylayabilmesi.
 
 ---
 
-## 🗺️ 2. HARİTA HAVUZU VE COĞRAFİ ÖZELLİKLER (5 FARKLI HARİTA)
+## 🎯 1. TEMEL VİZYON VE MİMARİ HEDEFLER
 
-```
-===================================================================================================
-HARİTA 1: 🌊 NEHİR VADİSİ (RIVER VALLEY)
----------------------------------------------------------------------------------------------------
-Düzen:       Kuzey-Güney ayrımı. Ortada Z=0 ekseninde 11m genişliğinde derin su nehri.
-Geçitler:    Batı Taş Köprüsü (X=-28), Doğu Taş Köprüsü (X=+28), Merkez Taş Sığlığı (X=0).
-Üsler:       Oyuncu Güneyde (0, -52), Düşman Kuzeyde (0, +55).
-Görsel:      Zengin vadi yeşili zemin, berrak mavi su akıntısı, sazlıklar, köprü meşaleleri.
-Oynanış:     Köprü tahkimatı, boğaz tutma, nehir kıyısı savunması.
+1. **Simetrik 2 Kişilik Oyun (`LocalPlayerTeam`):**
+   - **1. Oyuncu (Host / MasterClient):** `UnitTeam.Player` (Mavi Krallık - Mavi Bayraklar & Mavi Bina Kubbeleri/Çatıları). Güney / Güney-Batı üssünde başlar.
+   - **2. Oyuncu (Client / Guest):** `UnitTeam.Enemy` (Kırmızı Krallık - Kırmızı Bayraklar & Kırmızı Bina Kubbeleri/Çatıları). Kuzey / Kuzey-Doğu üssünde başlar.
+   - Her oyuncu yalnızca kendi takımının birimlerini ve binalarını seçebilir, kendi üssünden üretim yapabilir ve yalnızca kendi birimlerinin açtığı **Savaş Sisini (Fog of War)** görebilir.
 
-===================================================================================================
-HARİTA 2: 🏜️ AÇIK BOZKIR (OPEN STEPPE / ARABIA)
----------------------------------------------------------------------------------------------------
-Düzen:       ORTADA NEHİR YOK! 160x160m tamamen açık, ferah ova ve hafif tepecikler.
-Geçitler:    Sınırsız serbest hareket. Nehir engelleyicisi ve köprü bulunmaz.
-Üsler:       Oyuncu Güneyde (0, -50), Düşman Kuzeyde (0, +50).
-Görsel:      Sıcak altın-sarı çayır tonu, açık güneşli gökyüzü, dağınık ağaç koruları, tepe kayalıkları.
-Oynanış:     Erken keşif, hızlı süvari akınları, her yönden gelebilecek kuşatmalar, geniş meydan muharebeleri.
+2. **Her İki Oyuncu İçin Bağımsız AI Komutanı (Dual AI Commanders):**
+   - Her iki oyuncunun ekranında kendi **AI Strateji Danışmanı & Emir Onay Paneli (`ApprovalPanelUI`)** çalışır.
+   - Her oyuncunun AI Komutanına gönderilen `AiSafeSnapshot` verisi **Savaş Sisi (Fog-of-War) Korumalıdır**: AI Komutan yalnızca o oyuncunun aktif görüş alanında (`FogCellState.Visible`) olan rakip birimleri görebilir; karanlık (`Unexplored`) veya görüş dışı (`Explored`) bölgelerdeki düşman hareketlerini sızdırmaz.
+   - Python AI Gateway (`gateway_server.py`) ve MCP Sunucusu (`server.py`) `TEAM_SAFE_STATES = {"BLUE": ..., "RED": ...}` ile iki oyuncunun stratejik hafızasını birbirinden tamamen izole tutar.
 
-===================================================================================================
-HARİTA 3: 🌲 KARA ORMAN (BLACK FOREST)
----------------------------------------------------------------------------------------------------
-Düzen:       Haritanın %70'i geçilmez devasa sık ormanlarla kaplıdır.
-Geçitler:    Üsler arasında yalnızca 2 dar boğaz (Choke Points: Batı Geçidi X=-22, Doğu Geçidi X=+22).
-Üsler:       Oyuncu Güney orman açıklığında (0, -50), Düşman Kuzey kalesinde (0, +50).
-Görsel:      Koyu yosunlu zemin, gizemli orman sisi (Atmospheric Fog), devasa çam ve meşe ağaçları.
-Oynanış:     Dar boğazlara sur çekme (Walling), kulelerle geçit savunması, kuşatma silahlarıyla yarma harekâtı.
-
-===================================================================================================
-HARİTA 4: ⛰️ ÇAPRAZ YAYLA (DIAGONAL HIGHLANDS / CROSS CORNERS)
----------------------------------------------------------------------------------------------------
-Düzen:       ÜSLER ÇAPRAZ KÖŞELERDE!
-Geçitler:    Merkezde zengin bir antik vadi/harabe veya yüksek yayla bulunur; intikal hatları uzundur.
-Üsler:       Oyuncu Güney-Batı köşesinde (-48, -48), Düşman Kuzey-Doğu kalesinde (+48, +48).
-Görsel:      Yüksek dağ çayırı rengi, merkezde antik taş harabeler ve dev dikilitaşlar, berrak dağ atmosferi.
-Oynanış:     Merkezdeki zengin altın ve maden yataklarının kontrolü için kıyasıya mücadele, uzun lojistik hatlar.
-
-===================================================================================================
-HARİTA 5: 🎲 RASTGELE HARİTA (RANDOM MAP GENERATOR)
----------------------------------------------------------------------------------------------------
-Düzen:       Yukarıdaki 4 harita türünden birini rastgele seçer ve ağaç/maden konumlarını tohumla çeşitlendirir.
-Oynanış:     Her yeni oyunda oyuncuyu sürpriz bir taktiksel durum ve harita düzeni karşılar.
-===================================================================================================
-```
+3. **Photon Ağ Senkronizasyonu (`RTSNetworkSyncManager`):**
+   - Birim üretimi (`RPC_SpawnUnit`), bina inşası (`RPC_SpawnBuilding`), hareket (`RPC_IssueMoveOrder`), saldırı (`RPC_IssueAttackOrder`), köylü görevleri (`RPC_IssueHarvestOrBuildOrder`) ve onaylanan AI Komutan planları (`RPC_ExecuteAIPlan`) Photon RPC katmanı üzerinden her iki oyuncunun ekranında deterministik olarak senkronize edilir.
 
 ---
 
-## 🎨 3. GÖRSEL İYİLEŞTİRMELER (VISUAL & ATMOSPHERIC POLISH)
+## 📅 2. UYGULAMA AŞAMALARI
 
-### 3.1. Zemin ve Doku Zenginliği
-* **Tekdüze Yeşilin Kaldırılması:** Düz yeşil plane yerine harita türüne özel ana zemin materyali (Bozkır için sıcak altın çimen, Kara Orman için koyu orman yosunu, Nehir için canlı zümrüt yeşili).
-* **Üs Taş Zeminleri (Cobblestone Base Aprons):** Şehir Merkezi ve ana kışlaların altında gerçekçi taş/kaldırım zemin döşemesi.
-* **Toprak Yol Hatları & Patikalar:** Üslerden madenlere ve geçitlere uzanan organik toprak yollar.
-* **Maden Yatağı Zenginleştirmesi:** Altın ve taş madenlerinin etrafında taş parçacıkları, döküntüler ve madenci izleri.
-
-### 3.2. Işıklandırma ve Atmosfer
-* **Haritaya Özel Gökyüzü ve Sis:**
-  * *Nehir Vadisi:* Sabah güneşinin yumuşak nehir parıltısı ve hafif su buharı.
-  * *Açık Bozkır:* Yüksek parlaklıkta sıcak altın güneş ışığı, uzun gölgeler, berrak ufuk çizgisi.
-  * *Kara Orman:* Mistik yeşilimsi orman sisi (`RenderSettings.fog`), gölgeli ağaç altları.
-  * *Çapraz Yayla:* Ferah dağ mavisi atmosfer ve yüksek kontrastlı ışık.
-
-### 3.3. Çevre Unsurları ve Antik Kalıntılar
-* Merkez yaylada antik sütunlar, yıkık taş duvarlar (ruins) ve kamp ateşleri.
-* Çiçek alanları, çalı kümeleri ve doğal kaya grupları.
-
----
-
-## 🎮 4. BAŞLANGIÇ EKRANINDA HARİTA SEÇİCİ VE SÜREKLİLİK (GAME LOOP)
-
-### 4.1. Start Screen Harita Seçim Arayüzü
-* Başlangıç ekranına (`StartScreen_Modal`) özel bir **Harita Seçim Bölümü** eklenir:
-  * Buton: `🗺️ HARİTA: NEHİR VADİSİ` (tıklandığında sırayla değişir).
-  * Harita Kartı: Seçilen haritanın ikonu, stratejik açıklaması ve arazi özellikleri ("Nehirsiz açık meydan • Hızlı süvari muharebesi").
-  * "Seferi Başlat" dendiğinde seçilen harita dinamik olarak inşa edilir ve kamera doğrudan oyuncunun üssüne odaklanır.
-
-### 4.2. Haritaya Uyumlu Düşman Akın Motoru (Adaptive Raid AI)
-* **Nehir Vadisi:** Düşman 1. dalgada Batı Köprüsünden, 2. dalgada Merkez Sığlıktan, 3. dalgada Doğu Köprüsünden taarruz eder.
-* **Açık Bozkır:** Düşman akınları doğrudan açık araziden, sol kanattan süvarilerle, merkezden mızrakçılarla hücum eder.
-* **Kara Orman:** Düşman yalnızca Batı ve Doğu boğazlarından saldırır; savunma duvarı yapılmışsa mancınıklarla surları döver.
-* **Çapraz Yayla:** Düşman Kuzey-Doğu kalesinden hareket edip merkez vadiden geçerek Güney-Batı'daki oyuncu üssünü hedefler.
-
----
-
-## 📅 5. UYGULAMA PLANI VE SIRADAKİ ADIMLAR
-
-| Aşama | Yapılacak İşlem | Açıklama |
+| Faz | Modül / Dosyalar | Yapılacak İşlemler |
 | :--- | :--- | :--- |
-| **Aşama 1** | **Harita Tipleri (RTSMapType) & Seçim Modülü** | `RTSMapType` enum'ı, başlangıç menüsüne interaktif harita seçim butonu ve açıklama paneli eklenmesi. |
-| **Aşama 2** | **4 Farklı Harita Üretecinin Kodlanması** | `RTSAutoBootstrap.cs` içine Nehir Vadisi, Açık Bozkır, Kara Orman ve Çapraz Yayla harita üreticilerinin entegrasyonu. |
-| **Aşama 3** | **Görsel Geliştirmeler (Zeminler, Işık, Sis, Detaylar)** | Üs taş meydanları, haritaya özel zemin renkleri, atmosferik sis/ışıklandırma ve çevre kalıntılarının eklenmesi. |
-| **Aşama 4** | **Birim Yönlendirme & Akınların Haritaya Bağlanması** | `RTSUnit.cs` nehir kontrolünün nehirsiz haritalara uyarlanması, `RTSGameManager.cs` akınlarının seçili haritanın üs ve geçitlerine göre otomatik konumlanması. |
-| **Aşama 5** | **Test ve Doğrulama** | Haritalar arası geçişlerin, derleme kontrolünün (`verify_build.py`) ve oyun içi akışın test edilmesi. |
-
----
-
-## 🚀 ŞİMDİ NE YAPIYORUZ?
-
-Kullanıcının talimatı doğrultusunda derhal **Aşama 1 ve Aşama 2**'ye başlıyoruz:
-1. `RTSMapType` enum'ını ve Başlangıç Ekranındaki interaktif **Harita Seçim Butonunu** oluşturmak.
-2. `RTSAutoBootstrap.cs` içerisine 4 haritayı (Nehir Vadisi, Açık Bozkır, Kara Orman, Çapraz Yayla) ve `Rastgele` seçeneğini inşa edecek görsel arazi ve üs kurucularını entegre etmek.
+| **Faz 1** | **Simetrik Takım Perspektifi (`LocalPlayerTeam`)**<br>`RTSGameManager.cs`, `RTSSelectionManager.cs`, `RTSFogOfWarManager.cs`, `RTSFogDiscoverable.cs`, `RTSCameraController.cs` | `LocalPlayerTeam` tanımı; Kırmızı oyuncunun kendi birim/binalarını seçebilmesi, kamerasının Kırmızı Üste başlaması ve Savaş Sisinin her oyuncunun kendi takımına göre hesaplanması. |
+| **Faz 2** | **Photon PUN 2 Lobi & RPC Senkronizasyonu**<br>`RTSNetworkSyncManager.cs`, `RTSHUDController.cs`, `RTSUnit.cs`, `RTSBuilding.cs` | Başlangıç ekranına `Tek Oyunculu (PvE)` / `2 Kişilik Online (Photon PvP)` lobi seçimi, Oda ID girişi, birim/bina `networkId` eşlemesi ve hareket/saldırı/üretim RPC senkronizasyonu. |
+| **Faz 3** | **Çift AI Komutan & MCP Sunucu İzolasyonu**<br>`AiSafeSnapshot.cs`, `AiGatewayClient.cs`, `gateway_server.py`, `agent_runner.py`, `server.py` | Snapshot içerisine `team_id` (`"BLUE"` / `"RED"`) eklenmesi, Python sunucusunda Mavi ve Kırmızı takım hafızalarının ayrılması ve onaylanan AI planlarının (`RPC_ExecuteAIPlan`) her iki takım için simetrik icrası. |
+| **Faz 4** | **PvP Oyun Döngüsü & Test**<br>`RTSGameManager.cs`, `RTSHUDController.cs` | 2 kişilik PvP modunda otomatik yapay bot dalgalarının (`enableEnemyRaids`) kapatılması, Karargah yıkımına dayalı PvP Zafer/Yenilgi ekranı ve çift istemci senkronizasyon testi. |

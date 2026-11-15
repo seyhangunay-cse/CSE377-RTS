@@ -345,15 +345,40 @@ namespace CSE377.Gameplay
             SpawnInitialArmies(newPlayerSpawn);
 
             // Eski haritaya ait keşif kalıntılarını temizle ve savaş sisini sıfırla
+            RefreshPerspectiveForLocalTeam();
+        }
+
+        /// <summary>
+        /// Yerel oyuncunun seçtiği takıma (1. Oyuncu Mavi veya 2. Oyuncu Kırmızı) göre
+        /// kamera odak noktasını, bina/asker sis görünürlüğünü ve Savaş Sisini (Fog of War) günceller.
+        /// </summary>
+        public void RefreshPerspectiveForLocalTeam()
+        {
+            foreach (var b in RTSBuilding.AllBuildings)
+            {
+                if (b != null) b.RefreshFogPerspective();
+            }
+
             if (RTSFogOfWarManager.Instance != null)
             {
                 RTSFogOfWarManager.Instance.ResetFog();
             }
 
+            foreach (var u in RTSUnit.AllUnits)
+            {
+                if (u != null)
+                {
+                    bool vis = (u.team == RTSGameManager.LocalPlayerTeam) ||
+                               (RTSFogOfWarManager.Instance != null && RTSFogOfWarManager.Instance.IsUnitVisible(u));
+                    u.SetFogOfWarVisibility(vis);
+                }
+            }
+
+            Vector3 myBasePos = (RTSGameManager.LocalPlayerTeam == UnitTeam.Enemy) ? CurrentEnemyBasePos : CurrentPlayerBasePos;
             var camCtrl = Camera.main != null ? Camera.main.GetComponent<RTSCameraController>() : null;
             if (camCtrl != null)
             {
-                camCtrl.FocusOnPosition(CurrentPlayerBasePos);
+                camCtrl.FocusOnPosition(myBasePos);
             }
 
             var minimapCtrl = FindFirstObjectByType<RTSMinimapController>();
@@ -361,6 +386,8 @@ namespace CSE377.Gameplay
             {
                 minimapCtrl.DrawMinimap();
             }
+
+            RTSGameManager.Instance?.UpdateHUD();
         }
 
         /// <summary>
@@ -2411,37 +2438,63 @@ namespace CSE377.Gameplay
             // Zorluk Derecesi Butonu (Ahşap & Pirinç Dokulu Buton)
             var diffBtn = CreateUITexturedButton(leftCol.transform, "DiffBtn", "⚔️ ZORLUK: STANDART (Dengeli AI)", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.10f), new Vector2(390, 42), new Color(0.14f, 0.18f, 0.26f));
 
-            // SAĞ SÜTUN: SEFER KOMUTANLIĞI & EYLEM MENÜSÜ (360px)
-            var rightCol = CreateUIPanel(mainCard.transform, "Right_CommandCol", new Vector2(0.745f, 0.435f), new Vector2(0.745f, 0.435f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(360, 360), new Color(0.04f, 0.05f, 0.07f, 0.75f));
+            // SAĞ SÜTUN: SEFER KOMUTANLIĞI & PHOTON ODA SİSTEMİ (380px)
+            var rightCol = CreateUIPanel(mainCard.transform, "Right_CommandCol", new Vector2(0.745f, 0.435f), new Vector2(0.745f, 0.435f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(380, 360), new Color(0.04f, 0.05f, 0.07f, 0.75f));
             var rightBorder = rightCol.AddComponent<Outline>();
             rightBorder.effectColor = new Color(0.55f, 0.45f, 0.25f, 0.55f);
             rightBorder.effectDistance = new Vector2(1.2f, -1.2f);
 
-            CreateUIText(rightCol.transform, "ColHeader2", "⚜️  SEFER KOMUTANLIĞI", 12, new Color(1f, 0.88f, 0.42f), medievalTitleFont, new Vector2(0.5f, 0.93f), new Vector2(330, 22)).fontStyle = FontStyle.Bold;
+            CreateUIText(rightCol.transform, "ColHeader2", "⚜️  SEFER & PHOTON ODA LOBİSİ", 12, new Color(1f, 0.88f, 0.42f), medievalTitleFont, new Vector2(0.5f, 0.94f), new Vector2(350, 20)).fontStyle = FontStyle.Bold;
 
             // BÜYÜK BAŞLAT BUTONU (PRIMARY CTA - Hakiki Zümrüt & Altın Yaldızlı Dokulu Mühür Buton)
-            var playBtn = CreateUITexturedButton(rightCol.transform, "PlayBtn", "⚔️  SEFERİ BAŞLAT  ⚔️", btnGreenTex, medievalTitleFont, new Vector2(0.5f, 0.73f), new Vector2(330, 72), new Color(0.10f, 0.50f, 0.22f));
+            var playBtn = CreateUITexturedButton(rightCol.transform, "PlayBtn", "⚔️  SEFERİ BAŞLAT  ⚔️", btnGreenTex, medievalTitleFont, new Vector2(0.5f, 0.805f), new Vector2(350, 56), new Color(0.10f, 0.50f, 0.22f));
             var playTxt = playBtn.GetComponentInChildren<Text>();
-            if (playTxt != null) { playTxt.fontSize = 20; playTxt.fontStyle = FontStyle.Bold; playTxt.color = Color.white; }
+            if (playTxt != null) { playTxt.fontSize = 18; playTxt.fontStyle = FontStyle.Bold; playTxt.color = Color.white; }
 
-            var playSub = CreateUIText(playBtn.transform, "PlaySub", "[ Savaş Alanına Gir & Başlat ]", 11, new Color(0.85f, 1.0f, 0.88f), medievalBodyFont, new Vector2(0.5f, 0.20f), new Vector2(300, 18));
+            var playSub = CreateUIText(playBtn.transform, "PlaySub", "[ Savaş Alanına Gir & Komutayı Devral ]", 10, new Color(0.85f, 1.0f, 0.88f), medievalBodyFont, new Vector2(0.5f, 0.18f), new Vector2(320, 16));
             playSub.fontStyle = FontStyle.Italic;
 
-            // Ayırıcı İnce Çizgi
-            CreateUIPanel(rightCol.transform, "RightDiv", new Vector2(0.10f, 0.54f), new Vector2(0.90f, 0.54f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(0, 1.2f), new Color(0.65f, 0.55f, 0.30f, 0.45f));
+            // --- PHOTON 2 KİŞİLİK ODA & ÇİFT AI KOMUTAN PANELİ ---
+            var roomBox = CreateUIPanel(rightCol.transform, "PhotonRoom_Panel", new Vector2(0.5f, 0.485f), new Vector2(0.5f, 0.485f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(354, 152), new Color(0.07f, 0.09f, 0.14f, 0.92f));
+            var roomBoxBorder = roomBox.AddComponent<Outline>();
+            roomBoxBorder.effectColor = new Color(0.82f, 0.68f, 0.28f, 0.65f);
+            roomBoxBorder.effectDistance = new Vector2(1.2f, -1.2f);
 
-            // KISAYOLLAR & REHBER (Ahşap & Pirinç Dokulu Buton)
-            var guideBtn = CreateUITexturedButton(rightCol.transform, "GuideBtn", "📜  KISAYOLLAR & REHBER", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.41f), new Vector2(330, 44), new Color(0.20f, 0.18f, 0.16f));
+            // 1. Oyun Modu Seçim Butonu (Tek Oyunculu PvE <-> Photon 2 Kişilik Oda PvP)
+            var modeBtn = CreateUIButton(roomBox.transform, "ModeBtn", "🎮 MOD: TEK OYUNCULU (PvE)", medievalTitleFont, new Vector2(0.5f, 0.83f), new Vector2(336, 30), new Color(0.14f, 0.28f, 0.46f));
+            var modeBtnTxt = modeBtn.GetComponentInChildren<Text>();
+            if (modeBtnTxt != null) { modeBtnTxt.fontSize = 12; modeBtnTxt.fontStyle = FontStyle.Bold; modeBtnTxt.color = new Color(0.95f, 0.92f, 0.78f); }
 
-            // SES & MÜZİK AYARLARI (Ahşap & Pirinç Dokulu Buton)
-            var audioBtn = CreateUITexturedButton(rightCol.transform, "AudioBtn", "⚙️  SES & MÜZİK AYARLARI", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.27f), new Vector2(330, 44), new Color(0.16f, 0.22f, 0.32f));
+            // 2. Oda Kodu Girişi & Odaya Bağlan Butonu
+            var roomInput = CreateUIInputField(roomBox.transform, "RoomCodeInput", "Oda Kodu (Örn: ODA-101)...", medievalBodyFont, new Vector2(0.32f, 0.55f), new Vector2(198, 28), new Color(0.04f, 0.05f, 0.08f, 0.98f));
+            roomInput.text = "ODA-101";
+            var roomInputBorder = roomInput.gameObject.AddComponent<Outline>();
+            roomInputBorder.effectColor = new Color(0.65f, 0.52f, 0.22f, 0.75f);
 
-            // Bilgi Notu (Ordu Düzeni)
-            var armyInfo = CreateUIText(rightCol.transform, "ArmyInfo", "🛡️ 1 Şehir Merkezi  •  3 Köylü  •  1 Keşif Atlısı\nSıfırdan ekonomini kur, ordunu eğit ve kaleyi yık!", 10, new Color(0.90f, 0.86f, 0.80f), medievalBodyFont, new Vector2(0.5f, 0.08f), new Vector2(330, 30));
-            armyInfo.fontStyle = FontStyle.Italic;
+            var joinRoomBtn = CreateUIButton(roomBox.transform, "JoinRoomBtn", "🌐 ODAYA GİR", medievalTitleFont, new Vector2(0.80f, 0.55f), new Vector2(128, 28), new Color(0.16f, 0.48f, 0.28f));
+            var joinRoomTxt = joinRoomBtn.GetComponentInChildren<Text>();
+            if (joinRoomTxt != null) { joinRoomTxt.fontSize = 11; joinRoomTxt.fontStyle = FontStyle.Bold; }
+
+            // 3. Takım & AI Komutan Seçimi Butonu (Mavi Krallık + Mavi AI <-> Kırmızı Krallık + Kırmızı AI)
+            var teamBtn = CreateUIButton(roomBox.transform, "TeamSelectBtn", "🔵 1. OYUNCU: MAVİ KRALLIK + MAVİ AI", medievalTitleFont, new Vector2(0.5f, 0.28f), new Vector2(336, 30), new Color(0.12f, 0.34f, 0.68f));
+            var teamBtnTxt = teamBtn.GetComponentInChildren<Text>();
+            if (teamBtnTxt != null) { teamBtnTxt.fontSize = 11; teamBtnTxt.fontStyle = FontStyle.Bold; }
+
+            // 4. Oda & AI Komutan Durum Satırı
+            var roomStatusTxt = CreateUIText(roomBox.transform, "RoomStatusText", "🟢 Tek Oyunculu (PvE) • Mavi Krallık + Mavi AI Komutanı", 10, new Color(0.75f, 0.95f, 0.80f), medievalBodyFont, new Vector2(0.5f, 0.07f), new Vector2(338, 16));
+            roomStatusTxt.fontStyle = FontStyle.Italic;
+
+            // KISAYOLLAR & REHBER + SES & MÜZİK AYARLARI (Alt Satır)
+            var guideBtn = CreateUITexturedButton(rightCol.transform, "GuideBtn", "📜  KISAYOLLAR & REHBER", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.18f), new Vector2(350, 34), new Color(0.20f, 0.18f, 0.16f));
+            var guideBtnTxt = guideBtn.GetComponentInChildren<Text>();
+            if (guideBtnTxt != null) guideBtnTxt.fontSize = 12;
+
+            var audioBtn = CreateUITexturedButton(rightCol.transform, "AudioBtn", "⚙️  SES & MÜZİK AYARLARI", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.07f), new Vector2(350, 34), new Color(0.16f, 0.22f, 0.32f));
+            var audioBtnTxt = audioBtn.GetComponentInChildren<Text>();
+            if (audioBtnTxt != null) audioBtnTxt.fontSize = 12;
 
             // --- C. ALT BİLGİ MÜHRÜ (LORE FOOTER) ---
-            CreateUIText(mainCard.transform, "Footer", "⚜️ CSE-377 RTS  •  Dinamik Savaş Alanı  •  Yapay Zeka Destekli Strateji & Kuşatma Harbi ⚜️", 11, new Color(0.85f, 0.78f, 0.60f, 0.90f), medievalBodyFont, new Vector2(0.5f, 0.035f), new Vector2(860, 20));
+            CreateUIText(mainCard.transform, "Footer", "⚜️ CSE-377 RTS  •  Photon 2 Kişilik Oda Sistemi  •  Çift AI Komutan (Mavi & Kırmızı) ⚜️", 11, new Color(0.85f, 0.78f, 0.60f, 0.90f), medievalBodyFont, new Vector2(0.5f, 0.035f), new Vector2(860, 20));
 
             hud.startScreenModal = startModal;
             hud.startScreenPlayBtn = playBtn;
@@ -2453,6 +2506,13 @@ namespace CSE377.Gameplay
             hud.startScreenGuideBtn = guideBtn;
             hud.startScreenAudioBtn = audioBtn;
             hud.startScreenAudioBtnText = audioBtn.GetComponentInChildren<Text>();
+            hud.startScreenModeBtn = modeBtn;
+            hud.startScreenModeBtnText = modeBtnTxt;
+            hud.startScreenRoomInput = roomInput;
+            hud.startScreenJoinRoomBtn = joinRoomBtn;
+            hud.startScreenTeamBtn = teamBtn;
+            hud.startScreenTeamBtnText = teamBtnTxt;
+            hud.startScreenRoomStatusText = roomStatusTxt;
 
             // --- 8. KONTROLLER & REHBER MODALI ---
             var guideModal = CreateUIPanel(canvasGo.transform, "ControlsGuide_Modal", new Vector2(0, 0), new Vector2(1, 1), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, new Color(0.02f, 0.03f, 0.05f, 0.92f));

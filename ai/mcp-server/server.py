@@ -14,10 +14,11 @@ from mcp.server import MCPServer
 # MCP Sunucusunu Başlat (Kılavuzdaki v2 standardı)
 mcp = MCPServer("RTS Strategic Commander")
 
-# Test aşamasında Unity'den gelecek güvenli snapshot verisini simüle eden mock store
+# İki oyunculu (Mavi vs Kırmızı) maçlarda her oyuncunun kendi AI Komutanı için izole hafıza (TEAM_SAFE_STATES)
 # DİKKAT: Rakibin gizli bilgileri, harita sisi altındaki yerler burada yer almaz!
-CURRENT_SAFE_STATE = {
+DEFAULT_STATE_TEMPLATE = {
     "match_id": "demo-match-01",
+    "team_id": "BLUE",
     "resources": {"wood": 450, "food": 200, "gold": 150},
     "army": [
         {"type": "spearman", "count": 4},
@@ -31,6 +32,35 @@ CURRENT_SAFE_STATE = {
         {"type": "UNDER_ATTACK", "zone": "north_gate", "seconds_ago": 12}
     ]
 }
+
+TEAM_SAFE_STATES = {
+    "BLUE": dict(DEFAULT_STATE_TEMPLATE, team_id="BLUE"),
+    "RED": dict(DEFAULT_STATE_TEMPLATE, team_id="RED")
+}
+
+ACTIVE_TEAM_ID = "BLUE"
+CURRENT_SAFE_STATE = TEAM_SAFE_STATES["BLUE"]
+
+def set_active_team_snapshot(team_id: str, snapshot: dict):
+    """Belirli bir takımın (BLUE veya RED) güvenli Savaş Sisi snapshot'ını günceller ve aktif komutan bağlamını seçer."""
+    global ACTIVE_TEAM_ID, CURRENT_SAFE_STATE
+    norm_team = "RED" if str(team_id).upper().strip() == "RED" else "BLUE"
+    ACTIVE_TEAM_ID = norm_team
+    state = TEAM_SAFE_STATES[norm_team]
+    state["team_id"] = norm_team
+    if isinstance(snapshot, dict):
+        if "match_id" in snapshot:
+            state["match_id"] = snapshot["match_id"]
+        if "resources" in snapshot:
+            state["resources"] = snapshot["resources"]
+        if "army" in snapshot:
+            state["army"] = snapshot["army"]
+        if "visible_enemies" in snapshot:
+            state["visible_enemies"] = snapshot["visible_enemies"]
+        if "unlocked_tech" in snapshot:
+            state["unlocked_tech"] = snapshot["unlocked_tech"]
+    CURRENT_SAFE_STATE = state
+    return state
 
 @mcp.tool()
 def get_player_resources(*args, **kwargs) -> dict:

@@ -391,21 +391,24 @@ namespace CSE377.Gameplay
             if (carriedAmount > 0)
             {
                 var gameMgr = RTSGameManager.Instance;
-                if (gameMgr != null)
+                if (gameMgr != null && (unit == null || unit.team == RTSGameManager.LocalPlayerTeam))
                 {
                     gameMgr.DepositResources(carryingType, carriedAmount);
                 }
 
-                // AoE tarzı kaynak teslim bildirimi ve sesi
-                string icon = (carryingType == RTSResourceType.Wood) ? "[Odun]" : (carryingType == RTSResourceType.Gold) ? "[Altın]" : "[Gıda]";
-                Color resColor = (carryingType == RTSResourceType.Gold) ? new Color(1f, 0.86f, 0.2f) : (carryingType == RTSResourceType.Wood) ? new Color(0.85f, 0.65f, 0.35f) : new Color(0.35f, 0.90f, 0.4f);
-                Vector3 popPos = (townCenter != null) ? (townCenter.position + Vector3.up * 3.5f) : (transform.position + Vector3.up * 2f);
-                RTSVFXManager.Instance?.SpawnCombatText(popPos, $"+{carriedAmount} {icon}", resColor);
+                if (unit == null || unit.team == RTSGameManager.LocalPlayerTeam)
+                {
+                    // AoE tarzı kaynak teslim bildirimi ve sesi
+                    string icon = (carryingType == RTSResourceType.Wood) ? "[Odun]" : (carryingType == RTSResourceType.Gold) ? "[Altın]" : "[Gıda]";
+                    Color resColor = (carryingType == RTSResourceType.Gold) ? new Color(1f, 0.86f, 0.2f) : (carryingType == RTSResourceType.Wood) ? new Color(0.85f, 0.65f, 0.35f) : new Color(0.35f, 0.90f, 0.4f);
+                    Vector3 popPos = (townCenter != null) ? (townCenter.position + Vector3.up * 3.5f) : (transform.position + Vector3.up * 2f);
+                    RTSVFXManager.Instance?.SpawnCombatText(popPos, $"+{carriedAmount} {icon}", resColor);
 
-                if (carryingType == RTSResourceType.Gold)
-                    RTSAudioManager.Instance?.PlaySound(RTSSoundType.GoldMine, 0.18f);
-                else
-                    RTSAudioManager.Instance?.PlaySound(RTSSoundType.Click, 0.18f);
+                    if (carryingType == RTSResourceType.Gold)
+                        RTSAudioManager.Instance?.PlaySound(RTSSoundType.GoldMine, 0.18f);
+                    else
+                        RTSAudioManager.Instance?.PlaySound(RTSSoundType.Click, 0.18f);
+                }
 
                 Debug.Log($"[KÖYLÜ] {carriedAmount} adet {carryingType} Şehir Merkezine teslim edildi!");
                 carriedAmount = 0;
@@ -476,6 +479,29 @@ namespace CSE377.Gameplay
 
         private void FindTownCenter()
         {
+            UnitTeam myTeam = (unit != null) ? unit.team : RTSGameManager.LocalPlayerTeam;
+            RTSBuilding bestTc = null;
+            float bestDist = float.MaxValue;
+
+            foreach (var b in RTSBuilding.AllBuildings)
+            {
+                if (b != null && b.team == myTeam && b.buildingType == RTSBuildingType.TownCenter && b.currentHp > 0)
+                {
+                    float d = Vector3.Distance(transform.position, b.transform.position);
+                    if (d < bestDist)
+                    {
+                        bestDist = d;
+                        bestTc = b;
+                    }
+                }
+            }
+
+            if (bestTc != null)
+            {
+                townCenter = bestTc.transform;
+                return;
+            }
+
             var tc = GameObject.Find("Building_TownCenter");
             if (tc != null)
             {

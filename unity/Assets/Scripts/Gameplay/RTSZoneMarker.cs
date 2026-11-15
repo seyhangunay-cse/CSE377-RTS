@@ -42,13 +42,31 @@ namespace CSE377.Gameplay
 
         public static Vector3 GetZonePosition(string targetZoneId, Vector3 fallback)
         {
+            return GetZonePosition(targetZoneId, fallback, RTSGameManager.LocalPlayerTeam);
+        }
+
+        public static Vector3 GetZonePosition(string targetZoneId, Vector3 fallback, UnitTeam requesterTeam)
+        {
             if (!string.IsNullOrEmpty(targetZoneId))
             {
                 string key = targetZoneId.ToLower().Trim();
-                if (key == "town_center" || key == "towncenter" || key == "village_center" || key == "base") key = "main_base";
-                if (key == "north" || key == "gate" || key == "northgate") key = "north_gate";
+                bool isHomeBase = (key == "town_center" || key == "towncenter" || key == "village_center" || key == "base" || key == "main_base");
+                bool isEnemyBase = (key == "enemy_base" || key == "enemy_camp" || key == "enemy" || key == "enemybase");
 
-                if (AllZones.TryGetValue(key, out var marker))
+                if (isHomeBase)
+                {
+                    key = (requesterTeam == UnitTeam.Enemy) ? "enemy_base" : "main_base";
+                }
+                else if (isEnemyBase)
+                {
+                    key = (requesterTeam == UnitTeam.Enemy) ? "main_base" : "enemy_base";
+                }
+                else if (key == "north" || key == "gate" || key == "northgate")
+                {
+                    key = "north_gate";
+                }
+
+                if (AllZones.TryGetValue(key, out var marker) && marker != null)
                 {
                     return marker.GetRandomPositionInZone();
                 }

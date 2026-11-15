@@ -198,15 +198,25 @@ namespace CSE377.Gameplay
                 }
             }
 
-            // 2. Düşman birimlerinin görünürlüğünü güncelle
+            // 2. Birimlerin (Dost ve Rakip) görünürlüğünü güncelle
+            UnitTeam localTeam = RTSGameManager.LocalPlayerTeam;
             foreach (var unit in RTSUnit.AllUnits)
             {
-                if (unit != null && unit.team == UnitTeam.Enemy)
+                if (unit == null) continue;
+
+                if (unit.team == localTeam)
+                {
+                    if (!unit.isFogVisible)
+                    {
+                        unit.SetFogOfWarVisibility(true);
+                    }
+                }
+                else
                 {
                     bool isVisible = IsUnitVisible(unit);
                     if (!unit.isFogVisible && isVisible)
                     {
-                        // Düşman sis arkasından ilk defa oyuncunun görüş alanına girdi!
+                        // Rakip birimi sis arkasından ilk defa oyuncunun görüş alanına girdi!
                         if (Time.time >= nextSpottedAlarmTime)
                         {
                             nextSpottedAlarmTime = Time.time + 12f;
@@ -250,14 +260,16 @@ namespace CSE377.Gameplay
         }
 
         /// <summary>
-        /// Verilen dünya koordinatının herhangi bir dost birim veya bina tarafından görülüp görülmediğini hesaplar.
+        /// Verilen dünya koordinatının yerel oyuncunun herhangi bir dost birimi veya binası tarafından görülüp görülmediğini hesaplar.
         /// </summary>
         public bool IsPositionInPlayerVision(Vector3 worldPos)
         {
+            UnitTeam localTeam = RTSGameManager.LocalPlayerTeam;
+
             // 1. Dost Birlikler (Mızrakçı, Okçu, Köylü vb.)
             foreach (var u in RTSUnit.AllUnits)
             {
-                if (u != null && u.team == UnitTeam.Player && u.currentHp > 0)
+                if (u != null && u.team == localTeam && u.currentHp > 0)
                 {
                     float dist = Vector3.Distance(u.transform.position, worldPos);
                     if (dist <= u.sightRadius)
@@ -270,7 +282,7 @@ namespace CSE377.Gameplay
             // 2. Dost Binalar (Kışla, Kule, Şehir Merkezi vb.)
             foreach (var b in RTSBuilding.AllBuildings)
             {
-                if (b != null && b.team == UnitTeam.Player && b.isConstructed && b.currentHp > 0)
+                if (b != null && b.team == localTeam && b.isConstructed && b.currentHp > 0)
                 {
                     float dist = Vector3.Distance(b.transform.position, worldPos);
                     if (dist <= b.sightRadius)
@@ -284,23 +296,23 @@ namespace CSE377.Gameplay
         }
 
         /// <summary>
-        /// Belirli bir düşman biriminin oyuncu tarafından görülüp görülmediği (Hile koruması filtresi).
+        /// Belirli bir rakip biriminin yerel oyuncu tarafından görülüp görülmediği (Hile koruması filtresi).
         /// </summary>
         public bool IsUnitVisible(RTSUnit unit)
         {
             if (unit == null) return false;
-            if (unit.team == UnitTeam.Player) return true;
+            if (unit.team == RTSGameManager.LocalPlayerTeam) return true;
 
             return IsPositionInPlayerVision(unit.transform.position);
         }
 
         /// <summary>
-        /// Belirli bir düşman binasının oyuncu tarafından keşfedilip keşfedilmediği.
+        /// Belirli bir rakip binasının yerel oyuncu tarafından keşfedilip keşfedilmediği.
         /// </summary>
         public bool IsBuildingVisible(RTSBuilding building)
         {
             if (building == null) return false;
-            if (building.team == UnitTeam.Player) return true;
+            if (building.team == RTSGameManager.LocalPlayerTeam) return true;
 
             return GetCellStateAtWorldPos(building.transform.position) != FogCellState.Unexplored;
         }

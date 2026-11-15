@@ -67,19 +67,18 @@ class GatewayRequestHandler(BaseHTTPRequestHandler):
                     query = body.get("query") or body.get("user_prompt") or body.get("prompt") or query
                 snapshot = body.get("snapshot") if isinstance(body, dict) else None
                 
-                # Unity'den gelen canlı snapshot varsa MCP sunucusundaki belleği güncelle
-                if snapshot and isinstance(snapshot, dict):
-                    if "resources" in snapshot:
-                        server.CURRENT_SAFE_STATE["resources"] = snapshot["resources"]
-                    if "army" in snapshot:
-                        server.CURRENT_SAFE_STATE["army"] = snapshot["army"]
-                    if "visible_enemies" in snapshot:
-                        server.CURRENT_SAFE_STATE["visible_enemies"] = snapshot["visible_enemies"]
-                    if "unlocked_tech" in snapshot:
-                        server.CURRENT_SAFE_STATE["unlocked_tech"] = snapshot["unlocked_tech"]
-                    print("[GATEWAY] Unity snapshot verisi ile MCP safe store güncellendi.")
+                # Unity'den gelen canlı snapshot varsa ilgili takımın (BLUE / RED) MCP belleğini güncelle
+                team_id = "BLUE"
+                if isinstance(body, dict) and body.get("team_id"):
+                    team_id = str(body.get("team_id")).upper()
+                elif snapshot and isinstance(snapshot, dict) and snapshot.get("team_id"):
+                    team_id = str(snapshot.get("team_id")).upper()
 
-                print(f"[GATEWAY] Yeni plan talebi alındı: '{query}'")
+                if snapshot and isinstance(snapshot, dict):
+                    server.set_active_team_snapshot(team_id, snapshot)
+                    print(f"[GATEWAY] [{team_id} KOMUTANI] Unity snapshot verisi ile MCP safe store güncellendi.")
+
+                print(f"[GATEWAY] [{team_id} KOMUTANI] Yeni plan talebi alındı: '{query}'")
                 plan = run_agent(query)
 
                 self._set_headers(200)

@@ -141,7 +141,7 @@ namespace CSE377.Gameplay
 
             Debug.Log($"[İNŞAAT TAMAMLANDI] '{displayName}' 3D yapısı başarıyla tamamlandı!");
 
-            if (team == UnitTeam.Player)
+            if (team == RTSGameManager.LocalPlayerTeam)
             {
                 RTSAudioManager.Instance?.PlaySound(RTSSoundType.TechComplete);
                 RTSGameManager.Instance?.RecordBuildingConstructed();
@@ -150,7 +150,7 @@ namespace CSE377.Gameplay
             // Nüfus ve ekonomi HUD güncellemesi
             RTSGameManager.Instance?.UpdateHUD();
 
-            if (buildingType == RTSBuildingType.House && team == UnitTeam.Player)
+            if (buildingType == RTSBuildingType.House && team == RTSGameManager.LocalPlayerTeam)
             {
                 RTSHUDController.Instance?.SetAiStatus("[EV İNŞA EDİLDİ] Nüfus tavanınız +5 artırıldı!", Color.green);
             }
@@ -163,20 +163,20 @@ namespace CSE377.Gameplay
                 res.harvestInterval = 0.9f;
                 res.gatherPerTick = 2;
 
-                if (team == UnitTeam.Player)
+                if (team == RTSGameManager.LocalPlayerTeam)
                 {
                     RTSHUDController.Instance?.SetAiStatus("[TARLA İNŞA EDİLDİ] Buğday tarlanız hazır! Hasat başladı.", Color.green);
+                }
 
-                    // Tarlayı inşa eden işçiyi doğrudan tarlanın yanında hasada ata
-                    foreach (var u in RTSUnit.AllUnits)
+                // Tarlayı inşa eden işçiyi doğrudan tarlanın yanında hasada ata
+                foreach (var u in RTSUnit.AllUnits)
+                {
+                    if (u != null && u.team == this.team && u.unitType.ToLower() == "villager" && u.currentHp > 0)
                     {
-                        if (u != null && u.team == UnitTeam.Player && u.unitType.ToLower() == "villager" && u.currentHp > 0)
+                        var v = u.GetComponent<RTSVillager>();
+                        if (v != null && (v.currentBuildingTask == this || Vector3.Distance(u.transform.position, transform.position) <= 5.5f))
                         {
-                            var v = u.GetComponent<RTSVillager>();
-                            if (v != null && (v.currentBuildingTask == this || Vector3.Distance(u.transform.position, transform.position) <= 5.5f))
-                            {
-                                v.AssignHarvestTask(res);
-                            }
+                            v.AssignHarvestTask(res);
                         }
                     }
                 }
@@ -216,7 +216,7 @@ namespace CSE377.Gameplay
             // Yüzen Kuşatma Hasar Metni (Floating Siege Combat Text)
             RTSVFXManager.Instance?.SpawnCombatText(transform.position + Vector3.up * 2.8f, $"-{damage}", new Color(1.0f, 0.45f, 0.20f));
 
-            if (team == UnitTeam.Player)
+            if (team == RTSGameManager.LocalPlayerTeam)
             {
                 RTSMinimapController.Instance?.AddPing(transform.position, new Color32(255, 45, 45, 255), 5.5f);
                 RTSAudioManager.Instance?.NotifyCombat();
@@ -1370,15 +1370,46 @@ namespace CSE377.Gameplay
                 RTSAtmosphericLight.CreateTorch(building.transform, new Vector3(0, 1.6f, -1.5f), new Color(1.0f, 0.55f, 0.15f), range: 7f, intensity: 1.35f);
             }
 
-            // Düşman binalarını (sancak ve meşaleler dahil tüm alt parçaları oluşturulduktan sonra) sis gizleme sistemine bağla
-            if (team == UnitTeam.Enemy)
-            {
-                var disc = bGo.GetComponent<RTSFogDiscoverable>() ?? bGo.AddComponent<RTSFogDiscoverable>();
-                bool vis = RTSFogOfWarManager.Instance != null && RTSFogOfWarManager.Instance.IsBuildingVisible(building);
-                disc.ApplyVisibility(vis);
-            }
+            // Rakip binalarını (sancak ve meşaleler dahil tüm alt parçaları oluşturulduktan sonra) sis gizleme sistemine bağla
+            building.RefreshFogPerspective();
 
             return building;
+        }
+
+        /// <summary>
+        /// Yerel oyuncunun takımına (Mavi veya Kırmızı) göre binanın Savaş Sisi (Fog-of-War) görünürlüğünü günceller.
+        /// Dost binalar her zaman tam görünür; rakip binalar sis altında gizlenir ve keşfedildiğinde açılır.
+        /// </summary>
+        public void RefreshFogPerspective()
+        {
+            var disc = gameObject.GetComponent<RTSFogDiscoverable>();
+            if (team == RTSGameManager.LocalPlayerTeam)
+            {
+                if (disc != null)
+                {
+                    disc.SetDiscovered(true);
+                    disc.SetShroudDimmed(false);
+                    RTSFogDiscoverable.AllDiscoverables.Remove(disc);
+                    DestroyImmediate(disc);
+                }
+                foreach (var r in GetComponentsInChildren<Renderer>(true))
+                {
+                    if (r != null) r.enabled = true;
+                }
+                foreach (var l in GetComponentsInChildren<Light>(true))
+                {
+                    if (l != null) l.enabled = true;
+                }
+            }
+            else
+            {
+                if (disc == null)
+                {
+                    disc = gameObject.AddComponent<RTSFogDiscoverable>();
+                }
+                bool vis = RTSFogOfWarManager.Instance != null && RTSFogOfWarManager.Instance.IsBuildingVisible(this);
+                disc.ApplyVisibility(vis);
+            }
         }
     }
 }

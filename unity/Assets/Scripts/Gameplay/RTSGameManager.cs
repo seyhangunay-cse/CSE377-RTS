@@ -15,6 +15,12 @@ namespace CSE377.Gameplay
     {
         public static RTSGameManager Instance { get; private set; }
 
+        /// <summary>
+        /// Bu istemcideki oyuncunun yönettiği takım ve kendi AI Komutanı (1. Oyuncu: Mavi / Player, 2. Oyuncu: Kırmızı / Enemy).
+        /// </summary>
+        public static UnitTeam LocalPlayerTeam = UnitTeam.Player;
+        public static bool IsMultiplayerPvP = false;
+
         [Header("Oyuncu Kaynakları")]
         public int wood = 200;
         public int food = 200;
@@ -448,12 +454,13 @@ namespace CSE377.Gameplay
         /// <summary>
         /// Sahadaki tüm canlı oyuncu birimlerini (asker + köylü) sayarak mevcut nüfusu döndürür.
         /// </summary>
-        public int CalculateCurrentPopulation()
+        public int CalculateCurrentPopulation(UnitTeam? teamOverride = null)
         {
+            UnitTeam targetTeam = teamOverride ?? LocalPlayerTeam;
             int count = 0;
             foreach (var u in RTSUnit.AllUnits)
             {
-                if (u != null && u.team == UnitTeam.Player && u.currentHp > 0)
+                if (u != null && u.team == targetTeam && u.currentHp > 0)
                 {
                     count++;
                 }
@@ -464,14 +471,15 @@ namespace CSE377.Gameplay
         /// <summary>
         /// Şehir Merkezi (10 taban nüfus) ve tamamlanmış her Evden (+5 nüfus) azami nüfus tavanını hesaplar.
         /// </summary>
-        public int CalculateMaxPopulation()
+        public int CalculateMaxPopulation(UnitTeam? teamOverride = null)
         {
-            // Taban başlangıç nüfus kapasitesi: 10
-            int cap = 10;
+            UnitTeam targetTeam = teamOverride ?? LocalPlayerTeam;
+            // Taban başlangıç nüfus kapasitesi: 10 (Çok oyunculu Kırmızı başlangıçta +5 muhafız payı)
+            int cap = (targetTeam == UnitTeam.Enemy) ? 15 : 10;
 
             foreach (var b in RTSBuilding.AllBuildings)
             {
-                if (b != null && b.team == UnitTeam.Player && b.isConstructed)
+                if (b != null && b.team == targetTeam && b.isConstructed)
                 {
                     if (b.buildingType == RTSBuildingType.House)
                     {
@@ -500,7 +508,7 @@ namespace CSE377.Gameplay
 
         public void OnUnitDied(RTSUnit unit)
         {
-            if (unit.team == UnitTeam.Enemy)
+            if (unit.team != LocalPlayerTeam)
             {
                 enemiesKilled++;
             }
@@ -518,7 +526,7 @@ namespace CSE377.Gameplay
 
             float matchTime = Time.time - matchStartTime;
 
-            if (building.team == UnitTeam.Enemy && building.buildingType == RTSBuildingType.TownCenter)
+            if (building.team != LocalPlayerTeam && building.buildingType == RTSBuildingType.TownCenter)
             {
                 // Erken maç ve kendi kendine zafer koruması: İlk 30 saniyede veya hiç düşman öldürülmeden oyun bitemez
                 if (matchTime < 30f && enemiesKilled == 0)
@@ -527,11 +535,11 @@ namespace CSE377.Gameplay
                     return;
                 }
 
-                // DÜŞMAN KARARGAHI YIKILDI -> ZAFER!
+                // RAKİP KARARGAHI YIKILDI -> ZAFER!
                 isGameOver = true;
                 TriggerGameOver(isVictory: true);
             }
-            else if (building.team == UnitTeam.Player && building.buildingType == RTSBuildingType.TownCenter)
+            else if (building.team == LocalPlayerTeam && building.buildingType == RTSBuildingType.TownCenter)
             {
                 // DOST ŞEHİR MERKEZİ YIKILDI -> YENİLGİ!
                 isGameOver = true;
@@ -590,15 +598,19 @@ namespace CSE377.Gameplay
         }
 
         /// <summary>
-        /// Sahnedeki canlı nesnelerden hilesiz (Fog-of-War uyumlu) AiSafeSnapshot derler.
+        /// Sahnedeki canlı nesnelerden yerel oyuncunun takımına (BLUE veya RED) özel,
+        /// hilesiz (Fog-of-War uyumlu) AiSafeSnapshot derler.
         /// </summary>
         public AiSafeSnapshot GenerateLiveSnapshot()
         {
             var snapshot = new AiSafeSnapshot();
-            snapshot.match_id = "live-rts-match";
+            snapshot.team_id = (LocalPlayerTeam == UnitTeam.Enemy) ? "RED" : "BLUE";
+            snapshot.match_id = (RTSNetworkSyncManager.Instance != null && RTSNetworkSyncManager.Instance.isMultiplayerMode)
+                ? RTSNetworkSyncManager.Instance.matchRoomId
+                : "live-rts-match";
             snapshot.resources = new AiSafeSnapshot.ResourceState(wood, food, gold);
 
-            // Sahadaki dost orduyu say
+            // Sahadaki dost orduyu ve görüş alanındaki rakip birimleri say
             var armyCounts = new Dictionary<string, int>();
             var enemyCounts = new Dictionary<string, int>();
 
@@ -607,14 +619,14 @@ namespace CSE377.Gameplay
                 if (u == null || u.currentHp <= 0) continue;
 
                 string type = u.unitType.ToLower();
-                if (u.team == UnitTeam.Player)
+                if (u.team == LocalPlayerTeam)
                 {
                     armyCounts[type] = armyCounts.getOrDefault(type, 0) + 1;
                 }
                 else
                 {
                     // Savaş Sisi Filtresi (Hilesiz Anti-Cheat):
-                    // Yalnızca oyuncunun görüş alanına girmiş düşmanlar LLM Komutanına bildirilir!
+                    // Yalnızca bu oyuncunun görüş alanına girmiş rakip birimler kendi AI Komutanına bildirilir!
                     bool isVisible = (RTSFogOfWarManager.Instance != null)
                         ? RTSFogOfWarManager.Instance.IsUnitVisible(u)
                         : true;
@@ -651,7 +663,7 @@ namespace CSE377.Gameplay
                 snapshot.unlocked_tech.Add("Age_1");
             }
 
-            // Eğer kuzey kapısında düşman varsa saldırı alarmı ekle
+            // Eğer görüş alanında düşman varsa saldırı alarmı ekle
             if (enemyCounts.Count > 0)
             {
                 snapshot.recent_events.Add(new AiSafeSnapshot.GameEventSnapshot("UNDER_ATTACK", "north_gate", 5));
@@ -661,63 +673,81 @@ namespace CSE377.Gameplay
         }
 
         /// <summary>
-        /// Oyuncunun onayladığı eylem planını oyun dünyasında icra eder.
+        /// Oyuncunun onayladığı eylem planını oyun dünyasında icra eder ve Photon odasına senkronize eder.
         /// </summary>
         public void ExecuteApprovedPlan(RTSActionPlan plan)
         {
+            ExecuteApprovedPlanForTeam(plan, LocalPlayerTeam, broadcastOverNetwork: true);
+        }
+
+        /// <summary>
+        /// Belirtilen takımın (Mavi veya Kırmızı AI Komutanı) onaylanan eylem planını sahada icra eder.
+        /// </summary>
+        public void ExecuteApprovedPlanForTeam(RTSActionPlan plan, UnitTeam execTeam, bool broadcastOverNetwork = false)
+        {
             if (plan == null || plan.actions == null) return;
 
-            Debug.Log($"[RTSGameManager] Onaylanan eylem planı sahada icra ediliyor: '{plan.summary}'");
+            Debug.Log($"[RTSGameManager] ({execTeam}) Onaylanan AI Komutan planı sahada icra ediliyor: '{plan.summary}'");
             RTSAudioManager.Instance?.PlaySound(RTSSoundType.TechComplete);
+
+            if (broadcastOverNetwork)
+            {
+                RTSNetworkSyncManager.Instance?.BroadcastApprovedPlan(execTeam, plan);
+            }
 
             foreach (var action in plan.actions)
             {
-                // Ağ / Multiplay RPC senkronizasyonu
-                RTSNetworkSyncManager.Instance?.DispatchActionRpc(action);
+                if (broadcastOverNetwork)
+                {
+                    RTSNetworkSyncManager.Instance?.DispatchActionRpc(action);
+                }
 
                 switch (action.action_type.ToUpper())
                 {
                     case "TRAIN_UNIT":
-                        TrainUnits(action.unit_type, action.count, action.target_zone);
+                        TrainUnits(action.unit_type, action.count, action.target_zone, execTeam);
                         break;
 
                     case "MOVE_GROUP":
-                        MoveUnits(action.unit_type, action.count, action.target_zone);
+                        MoveUnits(action.unit_type, action.count, action.target_zone, execTeam);
                         break;
 
                     case "ATTACK":
                     case "ATTACK_MOVE":
-                        ExecuteAttackAction(action.unit_type, action.count, action.target_zone);
+                        ExecuteAttackAction(action.unit_type, action.count, action.target_zone, execTeam);
                         break;
 
                     case "SCOUT":
                     case "EXPLORE":
-                        ExecuteScoutAction(action.unit_type, action.count, action.target_zone);
+                        ExecuteScoutAction(action.unit_type, action.count, action.target_zone, execTeam);
                         break;
 
                     case "BUILD":
                         string bTypeToBuild = !string.IsNullOrEmpty(action.building_type) ? action.building_type : action.unit_type;
-                        ExecuteBuildAction(bTypeToBuild, action.target_zone);
+                        ExecuteBuildAction(bTypeToBuild, action.target_zone, execTeam);
                         break;
 
                     case "RESEARCH":
-                        string tIdToResearch = !string.IsNullOrEmpty(action.building_type) ? action.building_type : action.unit_type;
-                        if (string.IsNullOrEmpty(tIdToResearch) || !GameActionValidator.TechCosts.ContainsKey(tIdToResearch))
+                        if (execTeam == LocalPlayerTeam)
                         {
-                            foreach (var key in GameActionValidator.TechCosts.Keys)
+                            string tIdToResearch = !string.IsNullOrEmpty(action.building_type) ? action.building_type : action.unit_type;
+                            if (string.IsNullOrEmpty(tIdToResearch) || !GameActionValidator.TechCosts.ContainsKey(tIdToResearch))
                             {
-                                if (!string.IsNullOrEmpty(action.reason) && action.reason.IndexOf(key, StringComparison.OrdinalIgnoreCase) >= 0)
+                                foreach (var key in GameActionValidator.TechCosts.Keys)
                                 {
-                                    tIdToResearch = key;
-                                    break;
+                                    if (!string.IsNullOrEmpty(action.reason) && action.reason.IndexOf(key, StringComparison.OrdinalIgnoreCase) >= 0)
+                                    {
+                                        tIdToResearch = key;
+                                        break;
+                                    }
                                 }
                             }
+                            if (string.IsNullOrEmpty(tIdToResearch) || !GameActionValidator.TechCosts.ContainsKey(tIdToResearch))
+                            {
+                                tIdToResearch = "Wheelbarrow";
+                            }
+                            ExecuteResearchAction(tIdToResearch);
                         }
-                        if (string.IsNullOrEmpty(tIdToResearch) || !GameActionValidator.TechCosts.ContainsKey(tIdToResearch))
-                        {
-                            tIdToResearch = "Wheelbarrow";
-                        }
-                        ExecuteResearchAction(tIdToResearch);
                         break;
                 }
             }
@@ -725,7 +755,7 @@ namespace CSE377.Gameplay
             UpdateHUD();
         }
 
-        private void ExecuteBuildAction(string buildingTypeStr, string targetZone)
+        private void ExecuteBuildAction(string buildingTypeStr, string targetZone, UnitTeam execTeam)
         {
             string bKey = string.IsNullOrEmpty(buildingTypeStr) ? "barracks" : buildingTypeStr.ToLower().Trim();
             if (bKey == "village_center" || bKey == "villagecenter" || bKey == "town_center") bKey = "towncenter";
@@ -739,26 +769,34 @@ namespace CSE377.Gameplay
             else if (bKey == "citygate" || bKey == "city_gate" || bKey == "gate") bType = RTSBuildingType.CityGate;
             else if (bKey == "castle") bType = RTSBuildingType.Castle;
 
-            if (GameActionValidator.BuildingCosts.TryGetValue(bKey, out var cost))
+            if (execTeam == LocalPlayerTeam && GameActionValidator.BuildingCosts.TryGetValue(bKey, out var cost))
             {
                 wood -= cost.wood;
                 food -= cost.food;
                 gold -= cost.gold;
             }
 
-            Vector3 zoneCenter = RTSZoneMarker.GetZonePosition(targetZone, transform.position);
-            Vector3 buildPos = zoneCenter + new Vector3(Random.Range(-2.5f, 2.5f), 0, Random.Range(-2.5f, 2.5f));
+            Vector3 fallbackBase = (execTeam == UnitTeam.Enemy) ? RTSAutoBootstrap.CurrentEnemyBasePos : RTSAutoBootstrap.CurrentPlayerBasePos;
+            Vector3 zoneCenter = RTSZoneMarker.GetZonePosition(targetZone, fallbackBase, execTeam);
+            Vector3 buildPos = zoneCenter + new Vector3(Random.Range(-4.5f, 4.5f), 0, Random.Range(-4.5f, 4.5f));
 
-            var building = RTSBuilding.SpawnBuilding(bType, buildPos, UnitTeam.Player, startBuilt: false);
+            var building = RTSBuilding.SpawnBuilding(bType, buildPos, execTeam, startBuilt: false);
 
-            // Sahadaki uygun bir köylüyü inşaat için görevlendir
-            var villagers = FindObjectsByType<RTSVillager>(FindObjectsSortMode.None);
-            if (villagers.Length > 0)
+            // İlgili takımın uygun bir köylüsünü inşaat için görevlendir
+            foreach (var u in RTSUnit.AllUnits)
             {
-                villagers[0].AssignBuildTask(building);
+                if (u != null && u.team == execTeam && u.unitType.ToLower() == "villager" && u.currentHp > 0)
+                {
+                    var v = u.GetComponent<RTSVillager>();
+                    if (v != null)
+                    {
+                        v.AssignBuildTask(building);
+                        break;
+                    }
+                }
             }
 
-            Debug.Log($"[RTSGameManager] AI Onaylı İnşaat Başlatıldı: {bType} @ {targetZone}");
+            Debug.Log($"[RTSGameManager] ({execTeam}) AI Onaylı İnşaat Başlatıldı: {bType} @ {targetZone}");
         }
 
         private void ExecuteResearchAction(string techId)
@@ -769,63 +807,93 @@ namespace CSE377.Gameplay
             }
         }
 
-        private void TrainUnits(string unitType, int count, string targetZone)
+        private Vector3 GetTeamUnitSpawnOrigin(string unitType, UnitTeam execTeam)
         {
-            int currentPop = CalculateCurrentPopulation();
-            int maxPop = CalculateMaxPopulation();
+            string uLower = string.IsNullOrEmpty(unitType) ? "spearman" : unitType.ToLower();
+            RTSBuilding targetBld = null;
+
+            foreach (var b in RTSBuilding.AllBuildings)
+            {
+                if (b == null || b.team != execTeam || b.currentHp <= 0) continue;
+                if (uLower == "villager" && b.buildingType == RTSBuildingType.TownCenter)
+                {
+                    targetBld = b;
+                    break;
+                }
+                else if (uLower != "villager" && (b.buildingType == RTSBuildingType.Barracks || b.buildingType == RTSBuildingType.ArcheryRange || b.buildingType == RTSBuildingType.Castle))
+                {
+                    targetBld = b;
+                    break;
+                }
+            }
+
+            if (targetBld != null)
+            {
+                Vector3 fwd = (Vector3.zero - targetBld.transform.position);
+                fwd.y = 0f;
+                if (fwd.sqrMagnitude < 0.01f) fwd = (execTeam == UnitTeam.Enemy) ? Vector3.back : Vector3.forward;
+                else fwd.Normalize();
+                return targetBld.transform.position + fwd * 5.2f + Vector3.up * 0.1f;
+            }
+
+            Vector3 basePos = (execTeam == UnitTeam.Enemy) ? RTSAutoBootstrap.CurrentEnemyBasePos : RTSAutoBootstrap.CurrentPlayerBasePos;
+            Vector3 dirToCenter = (Vector3.zero - basePos).normalized;
+            return basePos + dirToCenter * 6.5f + Vector3.up * 0.1f;
+        }
+
+        private void TrainUnits(string unitType, int count, string targetZone, UnitTeam execTeam)
+        {
+            int currentPop = CalculateCurrentPopulation(execTeam);
+            int maxPop = CalculateMaxPopulation(execTeam);
 
             if (currentPop >= maxPop)
             {
-                hudController?.SetAiStatus($"[UYARI] Nüfus dolu ({currentPop}/{maxPop})! Yeni birlik üretilemedi. Ev (House) inşa edin.", Color.red);
+                if (execTeam == LocalPlayerTeam)
+                {
+                    hudController?.SetAiStatus($"[UYARI] Nüfus dolu ({currentPop}/{maxPop})! Yeni birlik üretilemedi. Ev (House) inşa edin.", Color.red);
+                }
                 return;
             }
 
             int allowedCount = Mathf.Min(count, maxPop - currentPop);
-            if (allowedCount < count && hudController != null)
+            if (allowedCount < count && execTeam == LocalPlayerTeam && hudController != null)
             {
                 hudController.SetAiStatus($"[UYARI] Nüfus sınırı ({maxPop}) nedeniyle {count} yerine {allowedCount} birlik üretildi.", Color.yellow);
             }
             count = allowedCount;
             if (count <= 0) return;
 
-            // Kaynak maliyetini düş
-            var (costWood, costFood, costGold) = GetUnitCost(unitType);
-            wood -= costWood * count;
-            food -= costFood * count;
-            gold -= costGold * count;
+            if (execTeam == LocalPlayerTeam)
+            {
+                var (costWood, costFood, costGold) = GetUnitCost(unitType);
+                wood -= costWood * count;
+                food -= costFood * count;
+                gold -= costGold * count;
+            }
 
-            // Birlik türüne göre güvenli açık alan çıkış noktası
-            Vector3 spawnOrigin;
-            if (unitType.ToLower() == "villager")
-            {
-                spawnOrigin = new Vector3(3f, 0.1f, -6.5f); // Şehir Merkezi önü
-            }
-            else
-            {
-                spawnOrigin = (playerSpawnPoint != null) ? playerSpawnPoint.position : new Vector3(-8f, 0.1f, -5.8f); // Kışla önü açık meydan
-            }
+            Vector3 spawnOrigin = GetTeamUnitSpawnOrigin(unitType, execTeam);
 
             for (int i = 0; i < count; i++)
             {
-                Vector3 spawnPos = spawnOrigin + new Vector3(Random.Range(-1.5f, 1.5f), 0, Random.Range(0f, 2.0f));
-                var unitComp = RTSUnit.SpawnUnit(unitType, spawnPos, UnitTeam.Player);
+                Vector3 spawnPos = spawnOrigin + new Vector3(Random.Range(-1.5f, 1.5f), 0, Random.Range(-1.5f, 1.5f));
+                var unitComp = RTSUnit.SpawnUnit(unitType, spawnPos, execTeam);
 
                 if (unitComp != null && !string.IsNullOrEmpty(targetZone))
                 {
-                    Vector3 targetPos = RTSZoneMarker.GetZonePosition(targetZone, unitComp.transform.position);
+                    Vector3 targetPos = RTSZoneMarker.GetZonePosition(targetZone, unitComp.transform.position, execTeam);
                     unitComp.MoveTo(targetPos);
                 }
             }
 
-            Debug.Log($"[RTSGameManager] {count}x {unitType} üretildi ve {targetZone} bölgesine intikal emri verildi!");
+            Debug.Log($"[RTSGameManager] ({execTeam}) {count}x {unitType} üretildi ve {targetZone} bölgesine intikal emri verildi!");
         }
 
-        private void MoveUnits(string unitType, int count, string targetZone)
+        private void MoveUnits(string unitType, int count, string targetZone, UnitTeam execTeam)
         {
             string zLower = string.IsNullOrEmpty(targetZone) ? "" : targetZone.ToLower().Trim();
             if (zLower == "unexplored" || zLower == "scout" || zLower == "explore" || zLower.Contains("gold"))
             {
-                ExecuteScoutAction(unitType, count, targetZone);
+                ExecuteScoutAction(unitType, count, targetZone, execTeam);
                 return;
             }
 
@@ -836,9 +904,9 @@ namespace CSE377.Gameplay
 
             foreach (var u in RTSUnit.AllUnits)
             {
-                if (u != null && u.team == UnitTeam.Player && (string.IsNullOrEmpty(targetKey) || targetKey == "soldier" || targetKey == "army" || u.unitType.ToLower() == targetKey) && u.currentHp > 0)
+                if (u != null && u.team == execTeam && (string.IsNullOrEmpty(targetKey) || targetKey == "soldier" || targetKey == "army" || u.unitType.ToLower() == targetKey) && u.currentHp > 0)
                 {
-                    Vector3 targetPos = RTSZoneMarker.GetZonePosition(targetZone, u.transform.position);
+                    Vector3 targetPos = RTSZoneMarker.GetZonePosition(targetZone, u.transform.position, execTeam);
                     Vector3 spread = new Vector3((movedCount % 3 - 1) * 1.8f, 0, (movedCount / 3) * 1.8f);
                     u.MoveTo(targetPos + spread, isManual: !isHostileZone);
                     movedCount++;
@@ -846,23 +914,23 @@ namespace CSE377.Gameplay
                 }
             }
 
-            Debug.Log($"[RTSGameManager] {movedCount} adet {unitType} birimi {targetZone} hedefine intikal ettiriliyor.");
+            Debug.Log($"[RTSGameManager] ({execTeam}) {movedCount} adet {unitType} birimi {targetZone} hedefine intikal ettiriliyor.");
         }
 
-        private void ExecuteAttackAction(string unitType, int count, string targetZone)
+        private void ExecuteAttackAction(string unitType, int count, string targetZone, UnitTeam execTeam)
         {
             string targetKey = string.IsNullOrEmpty(unitType) ? "" : unitType.ToLower();
             int maxCount = (count > 0) ? count : int.MaxValue;
             int assignedCount = 0;
 
-            Vector3 zonePos = RTSZoneMarker.GetZonePosition(string.IsNullOrEmpty(targetZone) ? "north_gate" : targetZone, Vector3.zero);
+            Vector3 zonePos = RTSZoneMarker.GetZonePosition(string.IsNullOrEmpty(targetZone) ? "north_gate" : targetZone, Vector3.zero, execTeam);
 
-            // Bölgeye veya haritadaki en yakın düşman birimini tespit et
+            // Bölgeye veya haritadaki en yakın rakip birimi tespit et
             RTSUnit targetEnemy = null;
             float bestDist = float.MaxValue;
             foreach (var u in RTSUnit.AllUnits)
             {
-                if (u != null && u.team == UnitTeam.Enemy && u.currentHp > 0)
+                if (u != null && u.team != execTeam && u.currentHp > 0)
                 {
                     float dist = (zonePos != Vector3.zero) ? Vector3.Distance(zonePos, u.transform.position) : 0f;
                     if (dist < bestDist)
@@ -873,14 +941,14 @@ namespace CSE377.Gameplay
                 }
             }
 
-            // Düşman birliği yoksa ve hedef bölgede düşman binası varsa onu hedef al
+            // Rakip birliği yoksa ve hedef bölgede rakip binası varsa onu hedef al
             RTSBuilding targetBuilding = null;
             if (targetEnemy == null && zonePos != Vector3.zero)
             {
-                float bestBldDist = 16f; // Yalnızca taarruz bölgesinin 16 metre menzilindeki binaları hedef al
+                float bestBldDist = 18f;
                 foreach (var b in RTSBuilding.AllBuildings)
                 {
-                    if (b != null && b.team == UnitTeam.Enemy && b.currentHp > 0)
+                    if (b != null && b.team != execTeam && b.currentHp > 0)
                     {
                         float dist = Vector3.Distance(zonePos, b.transform.position);
                         if (dist < bestBldDist)
@@ -894,7 +962,7 @@ namespace CSE377.Gameplay
 
             foreach (var u in RTSUnit.AllUnits)
             {
-                if (u != null && u.team == UnitTeam.Player && u.currentHp > 0 && u.unitType.ToLower() != "villager")
+                if (u != null && u.team == execTeam && u.currentHp > 0 && u.unitType.ToLower() != "villager")
                 {
                     if (string.IsNullOrEmpty(targetKey) || targetKey == "soldier" || targetKey == "army" || u.unitType.ToLower() == targetKey)
                     {
@@ -917,34 +985,35 @@ namespace CSE377.Gameplay
                 }
             }
 
-            // Taarruz ve Kuşatma Sesleri: Savaş Borusu, Hücum Trompeti ve Çarpışma Müziği
             RTSAudioManager.Instance?.PlaySound(RTSSoundType.WarHorn);
             RTSAudioManager.Instance?.PlaySound(RTSSoundType.AttackOrder);
             RTSAudioManager.Instance?.NotifyCombat();
 
-            // Taarruz eden öncü kuvvete uygun Türkçe seslendirme
-            string attackVoice = "spearman_attack";
-            if (!string.IsNullOrEmpty(targetKey))
+            if (execTeam == LocalPlayerTeam)
             {
-                if (targetKey == "cavalry" || targetKey == "scout") attackVoice = "cavalry_attack";
-                else if (targetKey == "archer") attackVoice = "archer_attack";
-                else if (targetKey == "trebuchet") attackVoice = "trebuchet_attack";
-            }
-            else
-            {
-                bool hasCav = RTSUnit.AllUnits.Exists(u => u != null && u.team == UnitTeam.Player && (u.unitType == "cavalry" || u.unitType == "scout") && u.currentHp > 0);
-                if (hasCav) attackVoice = "cavalry_attack";
-            }
-            RTSAudioManager.Instance?.PlayVoice(attackVoice, force: true);
+                string attackVoice = "spearman_attack";
+                if (!string.IsNullOrEmpty(targetKey))
+                {
+                    if (targetKey == "cavalry" || targetKey == "scout") attackVoice = "cavalry_attack";
+                    else if (targetKey == "archer") attackVoice = "archer_attack";
+                    else if (targetKey == "trebuchet") attackVoice = "trebuchet_attack";
+                }
+                else
+                {
+                    bool hasCav = RTSUnit.AllUnits.Exists(u => u != null && u.team == execTeam && (u.unitType == "cavalry" || u.unitType == "scout") && u.currentHp > 0);
+                    if (hasCav) attackVoice = "cavalry_attack";
+                }
+                RTSAudioManager.Instance?.PlayVoice(attackVoice, force: true);
 
-            if (RTSHUDController.Instance != null)
-            {
-                RTSHUDController.Instance.SetAiStatus($" [TAARRUZ BAŞLADI] {assignedCount} muharip askerimiz düşmana hücum ediyor!", Color.red);
+                if (RTSHUDController.Instance != null)
+                {
+                    RTSHUDController.Instance.SetAiStatus($" [TAARRUZ BAŞLADI] {assignedCount} muharip askerimiz düşmana hücum ediyor!", Color.red);
+                }
             }
-            Debug.Log($"[RTSGameManager] {assignedCount} asker {targetZone} bölgesine taarruz için harekete geçirildi.");
+            Debug.Log($"[RTSGameManager] ({execTeam}) {assignedCount} asker {targetZone} bölgesine taarruz için harekete geçirildi.");
         }
 
-        private void ExecuteScoutAction(string unitType, int count, string targetZone)
+        private void ExecuteScoutAction(string unitType, int count, string targetZone, UnitTeam execTeam)
         {
             int requested = (count > 0) ? count : 1;
             int assigned = 0;
@@ -953,12 +1022,11 @@ namespace CSE377.Gameplay
 
             string preferredType = string.IsNullOrEmpty(unitType) ? "" : unitType.ToLower();
 
-            // 1. Eğer oyuncu veya komutan belirli bir asker tipi istediyse önce onu bul
             if (!string.IsNullOrEmpty(preferredType) && preferredType != "scout" && preferredType != "soldier" && preferredType != "any")
             {
                 foreach (var u in RTSUnit.AllUnits)
                 {
-                    if (u != null && u.team == UnitTeam.Player && u.unitType.ToLower() == preferredType && u.currentHp > 0 && !u.isAutoScouting)
+                    if (u != null && u.team == execTeam && u.unitType.ToLower() == preferredType && u.currentHp > 0 && !u.isAutoScouting)
                     {
                         u.StartAutoScout(focus);
                         assigned++;
@@ -967,12 +1035,11 @@ namespace CSE377.Gameplay
                 }
             }
 
-            // 2. Sahadaki herhangi bir normal asker (Mızrakçı, Okçu, Süvari, Scout) keşfe gönderilebilir (Köylü hariç)
             if (assigned < requested)
             {
                 foreach (var u in RTSUnit.AllUnits)
                 {
-                    if (u != null && u.team == UnitTeam.Player && u.unitType.ToLower() != "villager" && u.currentHp > 0 && !u.isAutoScouting)
+                    if (u != null && u.team == execTeam && u.unitType.ToLower() != "villager" && u.currentHp > 0 && !u.isAutoScouting)
                     {
                         u.StartAutoScout(focus);
                         assigned++;
@@ -981,15 +1048,18 @@ namespace CSE377.Gameplay
                 }
             }
 
-            if (assigned > 0)
+            if (execTeam == LocalPlayerTeam)
             {
-                string msg = (focus == "gold") ? "altın kaynaklarını" : "sisli bölgeleri";
-                hudController?.SetAiStatus($"[GÖZCÜ EMRİ] {assigned} asker {msg} keşfetmek üzere haritaya açıldı!", Color.cyan);
-                RTSAudioManager.Instance?.PlaySound(RTSSoundType.MoveOrder);
-            }
-            else
-            {
-                hudController?.SetAiStatus("[UYARI] Keşfe göndermek için canlı askeri birliğiniz bulunmuyor!", Color.yellow);
+                if (assigned > 0)
+                {
+                    string msg = (focus == "gold") ? "altın kaynaklarını" : "sisli bölgeleri";
+                    hudController?.SetAiStatus($"[GÖZCÜ EMRİ] {assigned} asker {msg} keşfetmek üzere haritaya açıldı!", Color.cyan);
+                    RTSAudioManager.Instance?.PlaySound(RTSSoundType.MoveOrder);
+                }
+                else
+                {
+                    hudController?.SetAiStatus("[UYARI] Keşfe göndermek için canlı askeri birliğiniz bulunmuyor!", Color.yellow);
+                }
             }
         }
 
@@ -1023,8 +1093,9 @@ namespace CSE377.Gameplay
             gold -= costGold;
             UpdateHUD();
 
-            Vector3 spawnPos = spawnOrigin + new Vector3(Random.Range(-1.0f, 1.0f), 0, Random.Range(0f, 1.5f));
-            var rtsUnit = RTSUnit.SpawnUnit(unitType, spawnPos, UnitTeam.Player);
+            Vector3 spawnPos = spawnOrigin + new Vector3(Random.Range(-1.0f, 1.0f), 0, Random.Range(-1.0f, 1.0f));
+            var rtsUnit = RTSUnit.SpawnUnit(unitType, spawnPos, LocalPlayerTeam);
+            RTSNetworkSyncManager.Instance?.BroadcastUnitSpawn(unitType, spawnPos, LocalPlayerTeam);
 
             // Canlı HUD ve nüfus sayımını yeni birim doğduktan sonra anında güncelle!
             UpdateHUD();

@@ -146,6 +146,13 @@ namespace CSE377.Gameplay
         public Button startScreenGuideBtn;
         public Button startScreenAudioBtn;
         public Text startScreenAudioBtnText;
+        public Button startScreenModeBtn;
+        public Text startScreenModeBtnText;
+        public InputField startScreenRoomInput;
+        public Button startScreenJoinRoomBtn;
+        public Button startScreenTeamBtn;
+        public Text startScreenTeamBtnText;
+        public Text startScreenRoomStatusText;
 
         [Header("Nasıl Oynanır / Kısayollar Modalı")]
         public GameObject controlsGuideModal;
@@ -319,13 +326,73 @@ namespace CSE377.Gameplay
                 {
                     if (startScreenModal != null) startScreenModal.SetActive(false);
                     Time.timeScale = 1f;
-                    // Maç başlarken sisin yalnızca güncel haritadaki üs alanını açmasını sağla
-                    RTSFogOfWarManager.Instance?.ResetFog();
+                    // Seçilen takıma (Mavi veya Kırmızı) göre kamera ve savaş sisini hizala
+                    RTSAutoBootstrap.Instance?.RefreshPerspectiveForLocalTeam();
                     gameManager?.StartMatch();
                     RTSAudioManager.Instance?.PlaySound(RTSSoundType.WarHorn);
-                    SetAiStatus("[SEFER BAŞLADI] Şehir Merkezinizi koruyun, köylülerle ekonomi kurun ve düşmanı fethedin!", Color.white);
+
+                    string teamBanner = (RTSGameManager.LocalPlayerTeam == UnitTeam.Enemy)
+                        ? "🔴 [KIRMIZI KRALLIK + KIRMIZI AI KOMUTAN]"
+                        : "🔵 [MAVİ KRALLIK + MAVİ AI KOMUTAN]";
+                    SetAiStatus($"{teamBanner} Sefer Başladı! Ekonominizi kurun, AI Komutanınızla plan yapın ve zaferi kazanın!", Color.white);
                 });
             }
+
+            if (startScreenModeBtn != null)
+            {
+                startScreenModeBtn.onClick.AddListener(() =>
+                {
+                    if (RTSNetworkSyncManager.Instance != null)
+                    {
+                        if (!RTSNetworkSyncManager.Instance.isMultiplayerMode && startScreenRoomInput != null && !string.IsNullOrWhiteSpace(startScreenRoomInput.text))
+                        {
+                            RTSNetworkSyncManager.Instance.matchRoomId = startScreenRoomInput.text.Trim().ToUpperInvariant();
+                        }
+                        RTSNetworkSyncManager.Instance.ToggleMultiplayerMode();
+                    }
+                    RTSAudioManager.Instance?.PlaySound(RTSSoundType.Click);
+                    UpdatePhotonRoomLobbyUI();
+                });
+            }
+
+            if (startScreenJoinRoomBtn != null)
+            {
+                startScreenJoinRoomBtn.onClick.AddListener(() =>
+                {
+                    if (RTSNetworkSyncManager.Instance != null)
+                    {
+                        string roomCode = (startScreenRoomInput != null && !string.IsNullOrWhiteSpace(startScreenRoomInput.text))
+                            ? startScreenRoomInput.text.Trim().ToUpperInvariant()
+                            : "ODA-101";
+                        RTSNetworkSyncManager.Instance.ConnectToPhotonRoom(roomCode, RTSNetworkSyncManager.Instance.assignedTeam);
+                    }
+                    RTSAudioManager.Instance?.PlaySound(RTSSoundType.TechComplete);
+                    UpdatePhotonRoomLobbyUI();
+                });
+            }
+
+            if (startScreenTeamBtn != null)
+            {
+                startScreenTeamBtn.onClick.AddListener(() =>
+                {
+                    if (RTSNetworkSyncManager.Instance != null)
+                    {
+                        if (startScreenRoomInput != null && !string.IsNullOrWhiteSpace(startScreenRoomInput.text))
+                        {
+                            RTSNetworkSyncManager.Instance.matchRoomId = startScreenRoomInput.text.Trim().ToUpperInvariant();
+                        }
+                        RTSNetworkSyncManager.Instance.CycleAssignedTeam();
+                    }
+                    RTSAudioManager.Instance?.PlaySound(RTSSoundType.Click);
+                    UpdatePhotonRoomLobbyUI();
+                });
+            }
+
+            if (RTSNetworkSyncManager.Instance != null)
+            {
+                RTSNetworkSyncManager.Instance.OnRoomStateChanged += UpdatePhotonRoomLobbyUI;
+            }
+            UpdatePhotonRoomLobbyUI();
 
             if (startScreenMapBtn != null)
             {
@@ -595,6 +662,63 @@ namespace CSE377.Gameplay
             }
         }
 
+        public void UpdatePhotonRoomLobbyUI()
+        {
+            var net = RTSNetworkSyncManager.Instance;
+            bool isMp = (net != null && net.isMultiplayerMode);
+            UnitTeam team = (net != null) ? net.assignedTeam : RTSGameManager.LocalPlayerTeam;
+            string roomCode = (net != null && !string.IsNullOrEmpty(net.matchRoomId)) ? net.matchRoomId : "ODA-101";
+
+            if (startScreenRoomInput != null && string.IsNullOrEmpty(startScreenRoomInput.text))
+            {
+                startScreenRoomInput.text = roomCode;
+            }
+
+            if (startScreenModeBtnText != null)
+            {
+                startScreenModeBtnText.text = isMp
+                    ? $"🌐 MOD: PHOTON 2 KİŞİLİK ODA ({roomCode})"
+                    : "🎮 MOD: TEK OYUNCULU (PvE - Bot Akınları)";
+            }
+
+            if (startScreenModeBtn != null)
+            {
+                var img = startScreenModeBtn.GetComponent<Image>();
+                if (img != null)
+                {
+                    img.color = isMp ? new Color(0.14f, 0.45f, 0.30f) : new Color(0.14f, 0.28f, 0.46f);
+                }
+            }
+
+            if (startScreenTeamBtnText != null)
+            {
+                startScreenTeamBtnText.text = (team == UnitTeam.Enemy)
+                    ? "🔴 2. OYUNCU: KIRMIZI KRALLIK + KIRMIZI AI"
+                    : "🔵 1. OYUNCU: MAVİ KRALLIK + MAVİ AI";
+            }
+
+            if (startScreenTeamBtn != null)
+            {
+                var img = startScreenTeamBtn.GetComponent<Image>();
+                if (img != null)
+                {
+                    img.color = (team == UnitTeam.Enemy)
+                        ? new Color(0.62f, 0.16f, 0.16f)
+                        : new Color(0.12f, 0.34f, 0.68f);
+                }
+            }
+
+            if (startScreenRoomStatusText != null)
+            {
+                startScreenRoomStatusText.text = (net != null)
+                    ? net.roomStatusMessage
+                    : "🟢 Tek Oyunculu (PvE) • Mavi Krallık + Mavi AI Komutanı";
+                startScreenRoomStatusText.color = (team == UnitTeam.Enemy)
+                    ? new Color(1.0f, 0.78f, 0.75f)
+                    : new Color(0.75f, 0.95f, 0.85f);
+            }
+        }
+
         public void CycleMapSelection()
         {
             switch (RTSAutoBootstrap.SelectedMap)
@@ -705,6 +829,17 @@ namespace CSE377.Gameplay
             {
                 raidTimerText.text = "Savaş Sona Erdi";
                 raidTimerText.color = Color.gray;
+                return;
+            }
+
+            if (RTSGameManager.IsMultiplayerPvP)
+            {
+                string rCode = (RTSNetworkSyncManager.Instance != null) ? RTSNetworkSyncManager.Instance.matchRoomId : "ODA-101";
+                string aiTag = (RTSGameManager.LocalPlayerTeam == UnitTeam.Enemy) ? "Kırmızı AI" : "Mavi AI";
+                raidTimerText.text = $"🌐 {rCode} ({aiTag})";
+                raidTimerText.color = (RTSGameManager.LocalPlayerTeam == UnitTeam.Enemy)
+                    ? new Color(1.0f, 0.55f, 0.50f)
+                    : new Color(0.50f, 0.88f, 1.0f);
                 return;
             }
 
@@ -1285,9 +1420,10 @@ namespace CSE377.Gameplay
 
                 int milCount = 0;
                 int vilCount = 0;
+                UnitTeam myTeam = RTSGameManager.LocalPlayerTeam;
                 foreach (var u in RTSUnit.AllUnits)
                 {
-                    if (u != null && u.team == UnitTeam.Player && u.currentHp > 0)
+                    if (u != null && u.team == myTeam && u.currentHp > 0)
                     {
                         if (u.unitType.ToLower() == "villager") vilCount++;
                         else milCount++;
@@ -1320,9 +1456,10 @@ namespace CSE377.Gameplay
             if (idleVillagerBtn == null) return;
 
             int idleCount = 0;
+            UnitTeam myTeam = RTSGameManager.LocalPlayerTeam;
             foreach (var u in RTSUnit.AllUnits)
             {
-                if (u != null && u.team == UnitTeam.Player && u.unitType.ToLower() == "villager" && u.currentHp > 0)
+                if (u != null && u.team == myTeam && u.unitType.ToLower() == "villager" && u.currentHp > 0)
                 {
                     var v = u.GetComponent<RTSVillager>();
                     if (v != null && v.currentState == VillagerState.Idle)
@@ -1358,9 +1495,10 @@ namespace CSE377.Gameplay
             int countIdle = 0;
             int total = 0;
 
+            UnitTeam myTeam = RTSGameManager.LocalPlayerTeam;
             foreach (var u in RTSUnit.AllUnits)
             {
-                if (u != null && u.team == UnitTeam.Player && u.unitType.ToLower() == "villager" && u.currentHp > 0)
+                if (u != null && u.team == myTeam && u.unitType.ToLower() == "villager" && u.currentHp > 0)
                 {
                     total++;
                     var v = u.GetComponent<RTSVillager>();
@@ -1663,6 +1801,16 @@ namespace CSE377.Gameplay
             }
         }
 
+        private Vector3 GetBuildingFrontSpawnPos(RTSBuilding b, float dist = 5.5f)
+        {
+            if (b == null) return Vector3.zero;
+            Vector3 fwd = (Vector3.zero - b.transform.position);
+            fwd.y = 0f;
+            if (fwd.sqrMagnitude < 0.01f) fwd = (b.team == UnitTeam.Enemy) ? Vector3.back : Vector3.forward;
+            else fwd.Normalize();
+            return b.transform.position + fwd * dist;
+        }
+
         public void ShowArcheryRangeMenu(RTSBuilding archeryRange)
         {
             if (bottomActionPanel == null || archeryRange == null) return;
@@ -1670,7 +1818,7 @@ namespace CSE377.Gameplay
 
             if (actionPanelTitle != null) actionPanelTitle.text = "OKÇU TALİMGÂHI - MENZİLLİ BİRLİKLER";
 
-            Vector3 spawnPos = archeryRange.transform.position + new Vector3(0, 0, 5.0f);
+            Vector3 spawnPos = GetBuildingFrontSpawnPos(archeryRange, 5.0f);
 
             var techMgr = RTSTechManager.Instance;
             bool isFeudalOrHigher = (techMgr != null && techMgr.currentAge >= RTSAge.FeudalAge);
@@ -1710,7 +1858,7 @@ namespace CSE377.Gameplay
 
             if (actionPanelTitle != null) actionPanelTitle.text = "KUŞATMA ATÖLYESİ - AĞIR KUŞATMA SİLAHLARI";
 
-            Vector3 spawnPos = workshop.transform.position + new Vector3(0, 0, 5.5f);
+            Vector3 spawnPos = GetBuildingFrontSpawnPos(workshop, 5.5f);
 
             // 1. Kuşatma Mancınığı / Catapult (200 Odun, 150 Altın)
             SetupActionButton(actionBtn1, actionBtn1Text, "Mancınık\n200O, 150A", true, () =>
@@ -1816,7 +1964,7 @@ namespace CSE377.Gameplay
 
             if (actionPanelTitle != null) actionPanelTitle.text = "ŞANLI KALE - KRALİYET ORDUSU & KUŞATMA";
 
-            Vector3 spawnPos = castle.transform.position + new Vector3(0, 0, 6.0f);
+            Vector3 spawnPos = GetBuildingFrontSpawnPos(castle, 6.0f);
 
             // 1. Ağır Şövalye / Kraliyet Süvarisi (100Y, 80A)
             SetupActionButton(actionBtn1, actionBtn1Text, "Şövalye\n100Y, 80A", true, () =>
@@ -1853,7 +2001,7 @@ namespace CSE377.Gameplay
 
             if (actionPanelTitle != null) actionPanelTitle.text = "ŞEHİR MERKEZİ - NÜFUS & ÇAĞ GELİŞİMİ";
 
-            Vector3 spawnPos = townCenter.transform.position + new Vector3(0, 0, 5.5f);
+            Vector3 spawnPos = GetBuildingFrontSpawnPos(townCenter, 5.5f);
 
             SetupActionButton(actionBtn1, actionBtn1Text, "Köylü Eğit (Q)\n50 Yiyecek", true, () =>
             {
@@ -1902,7 +2050,7 @@ namespace CSE377.Gameplay
 
             if (actionPanelTitle != null) actionPanelTitle.text = "KIŞLA - ASKER EĞİTİMİ";
 
-            Vector3 spawnPos = barracks.transform.position + new Vector3(0, 0, 5.5f);
+            Vector3 spawnPos = GetBuildingFrontSpawnPos(barracks, 5.5f);
 
             var techMgr = RTSTechManager.Instance;
             bool isFeudal = (techMgr != null && techMgr.currentAge >= RTSAge.FeudalAge);

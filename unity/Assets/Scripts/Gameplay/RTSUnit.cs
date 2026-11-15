@@ -220,10 +220,14 @@ namespace CSE377.Gameplay
             RTSTechManager.Instance?.ApplyResearchedTechsToNewUnit(this);
             UnstuckFromBuildings();
 
-            if (team == UnitTeam.Enemy)
+            if (team != RTSGameManager.LocalPlayerTeam)
             {
                 bool vis = (RTSFogOfWarManager.Instance != null) && RTSFogOfWarManager.Instance.IsUnitVisible(this);
                 SetFogOfWarVisibility(vis);
+            }
+            else
+            {
+                SetFogOfWarVisibility(true);
             }
         }
 
@@ -1383,7 +1387,7 @@ namespace CSE377.Gameplay
             }
 
             // Oyuncu birimi hasar aldığında meşru alarm ve mini-harita uyarısı
-            if (team == UnitTeam.Player)
+            if (team == RTSGameManager.LocalPlayerTeam)
             {
                 RTSMinimapController.Instance?.AddPing(transform.position, new Color32(255, 60, 60, 255), 4.5f);
 
@@ -1675,12 +1679,16 @@ namespace CSE377.Gameplay
         private Renderer[] cachedRenderers;
 
         /// <summary>
-        /// Savaş sisi (Fog-of-War) kapsamında düşman biriminin 3D görünürlüğünü açar veya gizler.
+        /// Savaş sisi (Fog-of-War) kapsamında rakip biriminin 3D görünürlüğünü açar veya gizler.
+        /// Dost birimler her zaman görünürdür.
         /// </summary>
         public void SetFogOfWarVisibility(bool isVisible)
         {
+            if (team == RTSGameManager.LocalPlayerTeam)
+            {
+                isVisible = true;
+            }
             isFogVisible = isVisible;
-            if (team == UnitTeam.Player) return;
 
             cachedRenderers = GetComponentsInChildren<Renderer>(true);
 
@@ -1801,7 +1809,7 @@ namespace CSE377.Gameplay
                 return;
             }
 
-            bool shouldShow = (team == UnitTeam.Player || isFogVisible) && (isSelected || (currentHp < maxHp && currentHp > 0));
+            bool shouldShow = (team == RTSGameManager.LocalPlayerTeam || isFogVisible) && (isSelected || (currentHp < maxHp && currentHp > 0));
             overheadHealthBarRoot.SetActive(shouldShow);
 
             if (shouldShow && healthBarFill != null)
@@ -2027,10 +2035,14 @@ namespace CSE377.Gameplay
                 }
             }
 
-            if (team == UnitTeam.Enemy)
+            if (team != RTSGameManager.LocalPlayerTeam)
             {
                 bool vis = (RTSFogOfWarManager.Instance != null) && RTSFogOfWarManager.Instance.IsUnitVisible(u);
                 u.SetFogOfWarVisibility(vis);
+            }
+            else
+            {
+                u.SetFogOfWarVisibility(true);
             }
 
             return u;

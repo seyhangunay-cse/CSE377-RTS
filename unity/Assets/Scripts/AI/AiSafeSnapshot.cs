@@ -12,6 +12,7 @@ namespace CSE377.AI
     public class AiSafeSnapshot
     {
         public string match_id = "match-01";
+        public string team_id = "BLUE";
         public ResourceState resources = new ResourceState();
         public List<UnitGroup> army = new List<UnitGroup>();
         public List<EnemyGroup> visible_enemies = new List<EnemyGroup>();

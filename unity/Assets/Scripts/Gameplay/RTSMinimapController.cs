@@ -183,13 +183,14 @@ namespace CSE377.Gameplay
             }
 
             // 5. Binalar (Şehir Merkezi, Kale, Kışla, Kule, Demirci, Ev, Tarla)
-            // Dost binalar her zaman, düşman binaları yalnızca keşfedildiyse çizilir
+            // Dost binalar her zaman, rakip binaları yalnızca keşfedildiyse çizilir
+            UnitTeam myTeam = RTSGameManager.LocalPlayerTeam;
             foreach (var b in RTSBuilding.AllBuildings)
             {
                 if (b != null && b.currentHp > 0)
                 {
                     Vector3 bPos = b.transform.position;
-                    if (b.team == UnitTeam.Player || fow == null || fow.GetCellStateAtWorldPos(bPos) != FogCellState.Unexplored)
+                    if (b.team == myTeam || fow == null || fow.GetCellStateAtWorldPos(bPos) != FogCellState.Unexplored)
                     {
                         Color32 bCol = buildingColorByType(b);
                         int bSize = (b.buildingType == RTSBuildingType.TownCenter || b.buildingType == RTSBuildingType.Castle || b.buildingType == RTSBuildingType.SiegeWorkshop) ? 5 :
@@ -199,26 +200,27 @@ namespace CSE377.Gameplay
                 }
             }
 
-            // 6. Birlikler (Mızrakçı, Okçu, Köylü, Düşman Süvarileri)
+            // 6. Birlikler (Mızrakçı, Okçu, Köylü, Süvariler)
             foreach (var u in RTSUnit.AllUnits)
             {
                 if (u != null && u.currentHp > 0)
                 {
-                    if (u.team == UnitTeam.Player)
+                    Color32 unitDotColor = (u.team == UnitTeam.Player) ? playerUnitColor : enemyUnitColor;
+                    if (u.team == myTeam)
                     {
-                        // Oyuncu birimleri (Mavi/Camgöbeği 3x3)
-                        DrawWorldDot(new Vector2(u.transform.position.x, u.transform.position.z), playerUnitColor, 1);
+                        // Dost birimler her zaman görünür
+                        DrawWorldDot(new Vector2(u.transform.position.x, u.transform.position.z), unitDotColor, 1);
                     }
                     else
                     {
-                        // Düşman birimleri yalnızca görüş alanındaysa çizilir (Hile Koruması)
+                        // Rakip birimler yalnızca görüş alanındaysa çizilir (Hile Koruması)
                         bool visible = (RTSFogOfWarManager.Instance != null)
                             ? RTSFogOfWarManager.Instance.IsUnitVisible(u)
                             : true;
 
                         if (visible)
                         {
-                            DrawWorldDot(new Vector2(u.transform.position.x, u.transform.position.z), enemyUnitColor, 1);
+                            DrawWorldDot(new Vector2(u.transform.position.x, u.transform.position.z), unitDotColor, 1);
                         }
                     }
                 }
@@ -562,6 +564,7 @@ namespace CSE377.Gameplay
                 if (selMgr != null && selMgr.selectedUnits.Count > 0)
                 {
                     var fow = RTSFogOfWarManager.Instance;
+                    UnitTeam myTeam = RTSGameManager.LocalPlayerTeam;
                     bool hasVillager = selMgr.selectedUnits.Exists(u => u != null && u.GetComponent<RTSVillager>() != null);
 
                     // 1. Köylü Görevlendirmesi: Hasarlı Dost Bina Onarımı veya Kaynak Toplama
@@ -572,7 +575,7 @@ namespace CSE377.Gameplay
                         float closestDamagedDist = 7.5f;
                         foreach (var b in RTSBuilding.AllBuildings)
                         {
-                            if (b != null && b.team == UnitTeam.Player && b.isConstructed && b.currentHp < b.maxHp)
+                            if (b != null && b.team == myTeam && b.isConstructed && b.currentHp < b.maxHp)
                             {
                                 float d = Vector3.Distance(b.transform.position, targetWorldPos);
                                 if (d < closestDamagedDist)
@@ -635,13 +638,13 @@ namespace CSE377.Gameplay
                         }
                     }
 
-                    // 2. Düşman Birimi Taarruzu
+                    // 2. Rakip Birimi Taarruzu
                     RTSUnit targetEnemy = null;
                     float minUnitDist = 6f;
 
                     foreach (var enemyUnit in RTSUnit.AllUnits)
                     {
-                        if (enemyUnit != null && enemyUnit.team == UnitTeam.Enemy && enemyUnit.currentHp > 0)
+                        if (enemyUnit != null && enemyUnit.team != myTeam && enemyUnit.currentHp > 0)
                         {
                             bool isVis = (fow == null) || fow.IsUnitVisible(enemyUnit);
                             if (isVis)
@@ -672,13 +675,13 @@ namespace CSE377.Gameplay
                         return;
                     }
 
-                    // 3. Düşman Binası Kuşatması
+                    // 3. Rakip Binası Kuşatması
                     RTSBuilding targetEnemyBuilding = null;
                     float minBldDist = 8f;
 
                     foreach (var b in RTSBuilding.AllBuildings)
                     {
-                        if (b != null && b.team == UnitTeam.Enemy && b.currentHp > 0)
+                        if (b != null && b.team != myTeam && b.currentHp > 0)
                         {
                             bool isVis = (fow == null) || fow.IsBuildingVisible(b);
                             if (isVis)
@@ -697,7 +700,7 @@ namespace CSE377.Gameplay
                     {
                         foreach (var myUnit in selMgr.selectedUnits)
                         {
-                            if (myUnit != null && myUnit.team == UnitTeam.Player) myUnit.AttackBuilding(targetEnemyBuilding);
+                            if (myUnit != null && myUnit.team == myTeam) myUnit.AttackBuilding(targetEnemyBuilding);
                         }
                         selMgr.SpawnClickFeedback(targetEnemyBuilding.transform.position, Color.red);
                         RTSAudioManager.Instance?.PlaySound(RTSSoundType.WarHorn);
