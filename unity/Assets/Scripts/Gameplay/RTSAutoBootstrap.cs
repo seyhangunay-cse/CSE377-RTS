@@ -2367,7 +2367,8 @@ namespace CSE377.Gameplay
             modalRoot.SetActive(false);
 
             // --- 7. BAŞLANGIÇ EKRANI (START SCREEN / MAIN MENU - Kraliyet Sefer Masası) ---
-            var startModal = CreateUIPanel(canvasGo.transform, "StartScreen_Modal", new Vector2(0, 0), new Vector2(1, 1), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, new Color(0.015f, 0.02f, 0.03f, 0.92f));
+            // Tamamen opak (alpha = 1.0f) arkaplan sayesinde menüde harita değiştirildiğinde arkadaki 3D sahne görünmez ve parlamaz!
+            var startModal = CreateUIPanel(canvasGo.transform, "StartScreen_Modal", new Vector2(0, 0), new Vector2(1, 1), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, new Color(0.015f, 0.02f, 0.03f, 1.0f));
 
             // UI Dokuları (Textures - Lion Wood Frame, Emerald Button, Oak Button, Parchment Plate)
             Texture2D frameTex = LoadTextureSafely("Resources/UI/StartMenu/menu_frame.jpg");
@@ -2438,63 +2439,101 @@ namespace CSE377.Gameplay
             // Zorluk Derecesi Butonu (Ahşap & Pirinç Dokulu Buton)
             var diffBtn = CreateUITexturedButton(leftCol.transform, "DiffBtn", "⚔️ ZORLUK: STANDART (Dengeli AI)", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.10f), new Vector2(390, 42), new Color(0.14f, 0.18f, 0.26f));
 
-            // SAĞ SÜTUN: SEFER KOMUTANLIĞI & PHOTON ODA SİSTEMİ (380px)
+            // SAĞ SÜTUN: SEFER KOMUTANLIĞI & OYUN MODU (380px)
             var rightCol = CreateUIPanel(mainCard.transform, "Right_CommandCol", new Vector2(0.745f, 0.435f), new Vector2(0.745f, 0.435f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(380, 360), new Color(0.04f, 0.05f, 0.07f, 0.75f));
             var rightBorder = rightCol.AddComponent<Outline>();
             rightBorder.effectColor = new Color(0.55f, 0.45f, 0.25f, 0.55f);
             rightBorder.effectDistance = new Vector2(1.2f, -1.2f);
 
-            CreateUIText(rightCol.transform, "ColHeader2", "⚜️  SEFER & PHOTON ODA LOBİSİ", 12, new Color(1f, 0.88f, 0.42f), medievalTitleFont, new Vector2(0.5f, 0.94f), new Vector2(350, 20)).fontStyle = FontStyle.Bold;
+            CreateUIText(rightCol.transform, "ColHeader2", "⚜️  SEFER KOMUTANLIĞI & OYUN MODU", 12, new Color(1f, 0.88f, 0.42f), medievalTitleFont, new Vector2(0.5f, 0.93f), new Vector2(350, 22)).fontStyle = FontStyle.Bold;
 
-            // BÜYÜK BAŞLAT BUTONU (PRIMARY CTA - Hakiki Zümrüt & Altın Yaldızlı Dokulu Mühür Buton)
-            var playBtn = CreateUITexturedButton(rightCol.transform, "PlayBtn", "⚔️  SEFERİ BAŞLAT  ⚔️", btnGreenTex, medievalTitleFont, new Vector2(0.5f, 0.805f), new Vector2(350, 56), new Color(0.10f, 0.50f, 0.22f));
+            // 1. TEK OYUNCULU SEFERİ BAŞLAT BUTONU (PRIMARY CTA - Zümrüt & Altın Yaldızlı Mühür Buton)
+            var playBtn = CreateUITexturedButton(rightCol.transform, "PlayBtn", "⚔️  SEFERİ BAŞLAT  ⚔️", btnGreenTex, medievalTitleFont, new Vector2(0.5f, 0.76f), new Vector2(346, 62), new Color(0.10f, 0.50f, 0.22f));
             var playTxt = playBtn.GetComponentInChildren<Text>();
             if (playTxt != null) { playTxt.fontSize = 18; playTxt.fontStyle = FontStyle.Bold; playTxt.color = Color.white; }
 
-            var playSub = CreateUIText(playBtn.transform, "PlaySub", "[ Savaş Alanına Gir & Komutayı Devral ]", 10, new Color(0.85f, 1.0f, 0.88f), medievalBodyFont, new Vector2(0.5f, 0.18f), new Vector2(320, 16));
+            var playSub = CreateUIText(playBtn.transform, "PlaySub", "[ Tek Oyunculu Sefer • Savaş Alanına Gir ]", 10, new Color(0.85f, 1.0f, 0.88f), medievalBodyFont, new Vector2(0.5f, 0.18f), new Vector2(320, 16));
             playSub.fontStyle = FontStyle.Italic;
 
-            // --- PHOTON 2 KİŞİLİK ODA & ÇİFT AI KOMUTAN PANELİ ---
-            var roomBox = CreateUIPanel(rightCol.transform, "PhotonRoom_Panel", new Vector2(0.5f, 0.485f), new Vector2(0.5f, 0.485f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(354, 152), new Color(0.07f, 0.09f, 0.14f, 0.92f));
-            var roomBoxBorder = roomBox.AddComponent<Outline>();
-            roomBoxBorder.effectColor = new Color(0.82f, 0.68f, 0.28f, 0.65f);
-            roomBoxBorder.effectDistance = new Vector2(1.2f, -1.2f);
-
-            // 1. Oyun Modu Seçim Butonu (Tek Oyunculu PvE <-> Photon 2 Kişilik Oda PvP)
-            var modeBtn = CreateUIButton(roomBox.transform, "ModeBtn", "🎮 MOD: TEK OYUNCULU (PvE)", medievalTitleFont, new Vector2(0.5f, 0.83f), new Vector2(336, 30), new Color(0.14f, 0.28f, 0.46f));
+            // 2. ÇOK OYUNCULU SEÇENEĞİ BUTONU (Tıklandığında ayrı Çok Oyunculu Oda Lobisi Modalını açar)
+            var modeBtn = CreateUITexturedButton(rightCol.transform, "MultiplayerOpenBtn", "🌐  ÇOK OYUNCULU (2 KİŞİLİK ODA)", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.53f), new Vector2(346, 48), new Color(0.14f, 0.28f, 0.48f));
             var modeBtnTxt = modeBtn.GetComponentInChildren<Text>();
-            if (modeBtnTxt != null) { modeBtnTxt.fontSize = 12; modeBtnTxt.fontStyle = FontStyle.Bold; modeBtnTxt.color = new Color(0.95f, 0.92f, 0.78f); }
+            if (modeBtnTxt != null) { modeBtnTxt.fontSize = 14; modeBtnTxt.fontStyle = FontStyle.Bold; modeBtnTxt.color = new Color(1f, 0.92f, 0.65f); }
 
-            // 2. Oda Kodu Girişi & Odaya Bağlan Butonu
-            var roomInput = CreateUIInputField(roomBox.transform, "RoomCodeInput", "Oda Kodu (Örn: ODA-101)...", medievalBodyFont, new Vector2(0.32f, 0.55f), new Vector2(198, 28), new Color(0.04f, 0.05f, 0.08f, 0.98f));
-            roomInput.text = "ODA-101";
-            var roomInputBorder = roomInput.gameObject.AddComponent<Outline>();
-            roomInputBorder.effectColor = new Color(0.65f, 0.52f, 0.22f, 0.75f);
-
-            var joinRoomBtn = CreateUIButton(roomBox.transform, "JoinRoomBtn", "🌐 ODAYA GİR", medievalTitleFont, new Vector2(0.80f, 0.55f), new Vector2(128, 28), new Color(0.16f, 0.48f, 0.28f));
-            var joinRoomTxt = joinRoomBtn.GetComponentInChildren<Text>();
-            if (joinRoomTxt != null) { joinRoomTxt.fontSize = 11; joinRoomTxt.fontStyle = FontStyle.Bold; }
-
-            // 3. Takım & AI Komutan Seçimi Butonu (Mavi Krallık + Mavi AI <-> Kırmızı Krallık + Kırmızı AI)
-            var teamBtn = CreateUIButton(roomBox.transform, "TeamSelectBtn", "🔵 1. OYUNCU: MAVİ KRALLIK + MAVİ AI", medievalTitleFont, new Vector2(0.5f, 0.28f), new Vector2(336, 30), new Color(0.12f, 0.34f, 0.68f));
-            var teamBtnTxt = teamBtn.GetComponentInChildren<Text>();
-            if (teamBtnTxt != null) { teamBtnTxt.fontSize = 11; teamBtnTxt.fontStyle = FontStyle.Bold; }
-
-            // 4. Oda & AI Komutan Durum Satırı
-            var roomStatusTxt = CreateUIText(roomBox.transform, "RoomStatusText", "🟢 Tek Oyunculu (PvE) • Mavi Krallık + Mavi AI Komutanı", 10, new Color(0.75f, 0.95f, 0.80f), medievalBodyFont, new Vector2(0.5f, 0.07f), new Vector2(338, 16));
-            roomStatusTxt.fontStyle = FontStyle.Italic;
-
-            // KISAYOLLAR & REHBER + SES & MÜZİK AYARLARI (Alt Satır)
-            var guideBtn = CreateUITexturedButton(rightCol.transform, "GuideBtn", "📜  KISAYOLLAR & REHBER", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.18f), new Vector2(350, 34), new Color(0.20f, 0.18f, 0.16f));
+            // 3. NASIL OYNANIR & KISAYOLLAR
+            var guideBtn = CreateUITexturedButton(rightCol.transform, "GuideBtn", "📜  NASIL OYNANIR & KISAYOLLAR", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.33f), new Vector2(346, 44), new Color(0.20f, 0.18f, 0.16f));
             var guideBtnTxt = guideBtn.GetComponentInChildren<Text>();
-            if (guideBtnTxt != null) guideBtnTxt.fontSize = 12;
+            if (guideBtnTxt != null) guideBtnTxt.fontSize = 13;
 
-            var audioBtn = CreateUITexturedButton(rightCol.transform, "AudioBtn", "⚙️  SES & MÜZİK AYARLARI", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.07f), new Vector2(350, 34), new Color(0.16f, 0.22f, 0.32f));
+            // 4. SES & MÜZİK AYARLARI
+            var audioBtn = CreateUITexturedButton(rightCol.transform, "AudioBtn", "⚙️  SES & MÜZİK AYARLARI", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.14f), new Vector2(346, 44), new Color(0.16f, 0.22f, 0.32f));
             var audioBtnTxt = audioBtn.GetComponentInChildren<Text>();
-            if (audioBtnTxt != null) audioBtnTxt.fontSize = 12;
+            if (audioBtnTxt != null) audioBtnTxt.fontSize = 13;
 
             // --- C. ALT BİLGİ MÜHRÜ (LORE FOOTER) ---
-            CreateUIText(mainCard.transform, "Footer", "⚜️ CSE-377 RTS  •  Photon 2 Kişilik Oda Sistemi  •  Çift AI Komutan (Mavi & Kırmızı) ⚜️", 11, new Color(0.85f, 0.78f, 0.60f, 0.90f), medievalBodyFont, new Vector2(0.5f, 0.035f), new Vector2(860, 20));
+            CreateUIText(mainCard.transform, "Footer", "⚜️ CSE-377 RTS  •  Kraliyet Strateji Divanı  •  Taktiksel AI Komutanlığı ⚜️", 11, new Color(0.85f, 0.78f, 0.60f, 0.90f), medievalBodyFont, new Vector2(0.5f, 0.035f), new Vector2(860, 20));
+
+            // --- 7.5 ÇOK OYUNCULU PHOTON ODA LOBİSİ MODALI (Yalnızca "ÇOK OYUNCULU" seçeneğine girince açılır) ---
+            var mpModal = CreateUIPanel(canvasGo.transform, "MultiplayerLobby_Modal", new Vector2(0, 0), new Vector2(1, 1), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, new Color(0.015f, 0.02f, 0.03f, 1.0f));
+
+            var mpBox = CreateUIPanel(mpModal.transform, "Multiplayer_Box", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(700, 560), new Color(0.08f, 0.06f, 0.05f, 0.98f));
+            CreateUIPanel(mpBox.transform, "MpBorder", new Vector2(0, 0), new Vector2(1, 1), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, new Color(0.85f, 0.70f, 0.28f, 0.85f));
+            CreateUIPanel(mpBox.transform, "MpInner", new Vector2(0, 0), new Vector2(1, 1), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(-4, -4), new Color(0.09f, 0.11f, 0.16f, 0.96f));
+            CreateUIPanel(mpBox.transform, "MpGoldLine", new Vector2(0, 1), new Vector2(1, 1), new Vector2(0.5f, 1), new Vector2(0, -76), new Vector2(-48, 2f), new Color(0.85f, 0.70f, 0.28f, 0.6f));
+
+            var mpBadge = CreateUIText(mpBox.transform, "MpBadge", "⚜  PHOTON PUN 2 ÇOK OYUNCULU SEFER DİVANI  ⚜", 11, new Color(1f, 0.85f, 0.35f), medievalTitleFont, new Vector2(0.5f, 0.945f), new Vector2(620, 20));
+            mpBadge.fontStyle = FontStyle.Bold;
+
+            var mpTitle = CreateUIText(mpBox.transform, "MpTitle", "🌐  2 KİŞİLİK ODA & AI KOMUTAN LOBİSİ  🌐", 22, new Color(1.0f, 0.88f, 0.38f), medievalTitleFont, new Vector2(0.5f, 0.885f), new Vector2(620, 34));
+            mpTitle.fontStyle = FontStyle.Bold;
+
+            // 1. Oda Kodu Bölümü
+            var roomLbl = CreateUIText(mpBox.transform, "RoomLabel", "1. ODA KODU (Aynı Odaya Girmek İçin Oda Kodunu Yazıp Bağlanın):", 12, new Color(0.92f, 0.88f, 0.75f), medievalTitleFont, new Vector2(0.5f, 0.78f), new Vector2(560, 20));
+            roomLbl.alignment = TextAnchor.MiddleLeft;
+            roomLbl.fontStyle = FontStyle.Bold;
+
+            var roomInput = CreateUIInputField(mpBox.transform, "RoomCodeInput", "Oda Kodu (Örn: ODA-101)...", medievalBodyFont, new Vector2(0.36f, 0.705f), new Vector2(360, 40), new Color(0.04f, 0.05f, 0.08f, 0.98f));
+            roomInput.text = "ODA-101";
+            var roomInputBorder = roomInput.gameObject.AddComponent<Outline>();
+            roomInputBorder.effectColor = new Color(0.75f, 0.60f, 0.25f, 0.85f);
+
+            var joinRoomBtn = CreateUIButton(mpBox.transform, "JoinRoomBtn", "🌐 ODAYA BAĞLAN", medievalTitleFont, new Vector2(0.76f, 0.705f), new Vector2(180, 40), new Color(0.16f, 0.48f, 0.28f));
+            var joinRoomTxt = joinRoomBtn.GetComponentInChildren<Text>();
+            if (joinRoomTxt != null) { joinRoomTxt.fontSize = 13; joinRoomTxt.fontStyle = FontStyle.Bold; }
+
+            // 2. Krallık & AI Komutan Seçimi Bölümü
+            var teamLbl = CreateUIText(mpBox.transform, "TeamLabel", "2. KRALLIK & BAĞIMSIZ AI KOMUTAN SEÇİMİ (Değiştirmek İçin Tıklayın):", 12, new Color(0.92f, 0.88f, 0.75f), medievalTitleFont, new Vector2(0.5f, 0.59f), new Vector2(560, 20));
+            teamLbl.alignment = TextAnchor.MiddleLeft;
+            teamLbl.fontStyle = FontStyle.Bold;
+
+            var teamBtn = CreateUIButton(mpBox.transform, "TeamSelectBtn", "🔵 1. OYUNCU (HOST): MAVİ KRALLIK + MAVİ AI KOMUTAN", medievalTitleFont, new Vector2(0.5f, 0.51f), new Vector2(560, 46), new Color(0.12f, 0.34f, 0.68f));
+            var teamBtnTxt = teamBtn.GetComponentInChildren<Text>();
+            if (teamBtnTxt != null) { teamBtnTxt.fontSize = 13; teamBtnTxt.fontStyle = FontStyle.Bold; }
+
+            // 3. Savaş Sahası (Harita) Seçimi
+            var mpMapLbl = CreateUIText(mpBox.transform, "MpMapLabel", "3. SAVAŞ SAHASI SEÇİMİ:", 12, new Color(0.92f, 0.88f, 0.75f), medievalTitleFont, new Vector2(0.5f, 0.405f), new Vector2(560, 20));
+            mpMapLbl.alignment = TextAnchor.MiddleLeft;
+            mpMapLbl.fontStyle = FontStyle.Bold;
+
+            var mpMapBtn = CreateUITexturedButton(mpBox.transform, "MpMapBtn", "◄   HARİTA: NEHİR VADİSİ   ►", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.33f), new Vector2(560, 42), new Color(0.14f, 0.22f, 0.36f));
+            var mpMapBtnTxt = mpMapBtn.GetComponentInChildren<Text>();
+            if (mpMapBtnTxt != null) { mpMapBtnTxt.fontSize = 14; mpMapBtnTxt.fontStyle = FontStyle.Bold; mpMapBtnTxt.color = new Color(1f, 0.92f, 0.65f); }
+
+            // 4. Oda ve Oyuncu Bağlantı Durumu Kutusu
+            var statusBox = CreateUIPanel(mpBox.transform, "MpStatusBox", new Vector2(0.5f, 0.21f), new Vector2(0.5f, 0.21f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(560, 42), new Color(0.04f, 0.06f, 0.09f, 0.95f));
+            var statusBorder = statusBox.AddComponent<Outline>();
+            statusBorder.effectColor = new Color(0.65f, 0.55f, 0.25f, 0.6f);
+
+            var roomStatusTxt = CreateUIText(statusBox.transform, "RoomStatusText", "🌐 PHOTON ODA: [ODA-101] • 1. Oyuncu (Mavi Krallık + Mavi AI)", 11, new Color(0.75f, 0.95f, 0.85f), medievalBodyFont, new Vector2(0.5f, 0.5f), new Vector2(540, 32));
+            roomStatusTxt.fontStyle = FontStyle.Italic;
+
+            // 5. Alt Aksiyon Butonları (Çok Oyunculu Seferi Başlat & Ana Menüye Dön)
+            var mpBackBtn = CreateUITexturedButton(mpBox.transform, "MpBackBtn", "◄  ANA MENÜYE DÖN", btnDarkTex, medievalTitleFont, new Vector2(0.28f, 0.085f), new Vector2(220, 48), new Color(0.22f, 0.16f, 0.14f));
+            var mpStartBtn = CreateUITexturedButton(mpBox.transform, "MpStartBtn", "⚔️  ÇOK OYUNCULU SEFERİ BAŞLAT  ⚔️", btnGreenTex, medievalTitleFont, new Vector2(0.68f, 0.085f), new Vector2(320, 48), new Color(0.10f, 0.50f, 0.22f));
+            var mpStartTxt = mpStartBtn.GetComponentInChildren<Text>();
+            if (mpStartTxt != null) { mpStartTxt.fontSize = 14; mpStartTxt.fontStyle = FontStyle.Bold; mpStartTxt.color = Color.white; }
+
+            mpModal.SetActive(false);
 
             hud.startScreenModal = startModal;
             hud.startScreenPlayBtn = playBtn;
@@ -2508,11 +2547,16 @@ namespace CSE377.Gameplay
             hud.startScreenAudioBtnText = audioBtn.GetComponentInChildren<Text>();
             hud.startScreenModeBtn = modeBtn;
             hud.startScreenModeBtnText = modeBtnTxt;
+            hud.multiplayerLobbyModal = mpModal;
             hud.startScreenRoomInput = roomInput;
             hud.startScreenJoinRoomBtn = joinRoomBtn;
             hud.startScreenTeamBtn = teamBtn;
             hud.startScreenTeamBtnText = teamBtnTxt;
             hud.startScreenRoomStatusText = roomStatusTxt;
+            hud.mpLobbyMapBtn = mpMapBtn;
+            hud.mpLobbyMapBtnText = mpMapBtnTxt;
+            hud.mpLobbyStartMatchBtn = mpStartBtn;
+            hud.mpLobbyBackBtn = mpBackBtn;
 
             // --- 8. KONTROLLER & REHBER MODALI ---
             var guideModal = CreateUIPanel(canvasGo.transform, "ControlsGuide_Modal", new Vector2(0, 0), new Vector2(1, 1), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, new Color(0.02f, 0.03f, 0.05f, 0.92f));

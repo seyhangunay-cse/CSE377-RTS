@@ -148,11 +148,18 @@ namespace CSE377.Gameplay
         public Text startScreenAudioBtnText;
         public Button startScreenModeBtn;
         public Text startScreenModeBtnText;
+
+        [Header("Çok Oyunculu Photon Oda Lobisi Modalı (Multiplayer Lobby Modal)")]
+        public GameObject multiplayerLobbyModal;
         public InputField startScreenRoomInput;
         public Button startScreenJoinRoomBtn;
         public Button startScreenTeamBtn;
         public Text startScreenTeamBtnText;
         public Text startScreenRoomStatusText;
+        public Button mpLobbyMapBtn;
+        public Text mpLobbyMapBtnText;
+        public Button mpLobbyStartMatchBtn;
+        public Button mpLobbyBackBtn;
 
         [Header("Nasıl Oynanır / Kısayollar Modalı")]
         public GameObject controlsGuideModal;
@@ -332,36 +339,65 @@ namespace CSE377.Gameplay
             {
                 startScreenPlayBtn.onClick.AddListener(() =>
                 {
-                    if (startScreenModal != null) startScreenModal.SetActive(false);
-                    Time.timeScale = 1f;
-                    // Seçilen takıma (Mavi veya Kırmızı) göre kamera ve savaş sisini hizala
-                    RTSAutoBootstrap.Instance?.RefreshPerspectiveForLocalTeam();
-                    RTSNetworkSyncManager.Instance?.BroadcastMatchStart();
-                    gameManager?.StartMatch();
-                    RTSAudioManager.Instance?.PlaySound(RTSSoundType.WarHorn);
-
-                    string teamBanner = (RTSGameManager.LocalPlayerTeam == UnitTeam.Enemy)
-                        ? "🔴 [KIRMIZI KRALLIK + KIRMIZI AI KOMUTAN]"
-                        : "🔵 [MAVİ KRALLIK + MAVİ AI KOMUTAN]";
-                    SetAiStatus($"{teamBanner} Sefer Başladı! Ekonominizi kurun, AI Komutanınızla plan yapın ve zaferi kazanın!", Color.white);
+                    RTSNetworkSyncManager.Instance?.SetSinglePlayerMode();
+                    LaunchMatchFromMenu();
                 });
             }
 
+            // Ana Menüdeki "ÇOK OYUNCULU" butonu -> Çok Oyunculu Oda Lobisi Modalını açar
             if (startScreenModeBtn != null)
             {
                 startScreenModeBtn.onClick.AddListener(() =>
                 {
+                    if (multiplayerLobbyModal != null)
+                    {
+                        multiplayerLobbyModal.SetActive(true);
+                    }
                     if (RTSNetworkSyncManager.Instance != null)
                     {
-                        if (!RTSNetworkSyncManager.Instance.isMultiplayerMode && startScreenRoomInput != null && !string.IsNullOrWhiteSpace(startScreenRoomInput.text))
-                        {
-                            RTSNetworkSyncManager.Instance.matchRoomId = startScreenRoomInput.text.Trim().ToUpperInvariant();
-                        }
-                        RTSNetworkSyncManager.Instance.ToggleMultiplayerMode();
+                        string roomCode = (startScreenRoomInput != null && !string.IsNullOrWhiteSpace(startScreenRoomInput.text))
+                            ? startScreenRoomInput.text.Trim().ToUpperInvariant()
+                            : "ODA-101";
+                        RTSNetworkSyncManager.Instance.ConnectToPhotonRoom(roomCode, RTSNetworkSyncManager.Instance.assignedTeam);
                     }
                     RTSAudioManager.Instance?.PlaySound(RTSSoundType.Click);
                     UpdatePhotonRoomLobbyUI();
+                    UpdateMapSelectionUI();
                 });
+            }
+
+            if (mpLobbyBackBtn != null)
+            {
+                mpLobbyBackBtn.onClick.AddListener(() =>
+                {
+                    if (multiplayerLobbyModal != null)
+                    {
+                        multiplayerLobbyModal.SetActive(false);
+                    }
+                    RTSNetworkSyncManager.Instance?.SetSinglePlayerMode();
+                    RTSAudioManager.Instance?.PlaySound(RTSSoundType.Click);
+                    UpdatePhotonRoomLobbyUI();
+                });
+            }
+
+            if (mpLobbyStartMatchBtn != null)
+            {
+                mpLobbyStartMatchBtn.onClick.AddListener(() =>
+                {
+                    if (RTSNetworkSyncManager.Instance != null && !RTSNetworkSyncManager.Instance.isMultiplayerMode)
+                    {
+                        string roomCode = (startScreenRoomInput != null && !string.IsNullOrWhiteSpace(startScreenRoomInput.text))
+                            ? startScreenRoomInput.text.Trim().ToUpperInvariant()
+                            : "ODA-101";
+                        RTSNetworkSyncManager.Instance.ConnectToPhotonRoom(roomCode, RTSNetworkSyncManager.Instance.assignedTeam);
+                    }
+                    LaunchMatchFromMenu();
+                });
+            }
+
+            if (mpLobbyMapBtn != null)
+            {
+                mpLobbyMapBtn.onClick.AddListener(CycleMapSelection);
             }
 
             if (startScreenJoinRoomBtn != null)
@@ -671,10 +707,34 @@ namespace CSE377.Gameplay
             }
         }
 
+        public void LaunchMatchFromMenu(bool fromNetworkRpc = false)
+        {
+            if (multiplayerLobbyModal != null) multiplayerLobbyModal.SetActive(false);
+            if (startScreenModal != null) startScreenModal.SetActive(false);
+            Time.timeScale = 1f;
+
+            // Haritayı ve oyuncu perspektifini (Mavi Güney / Kırmızı Kuzey) yalnızca maç başlarken oluştur (Menüdeyken arkaplan değişmez!)
+            RTSAutoBootstrap.Instance?.RebuildMapForSelectedType();
+            RTSAutoBootstrap.Instance?.RefreshPerspectiveForLocalTeam();
+
+            if (!fromNetworkRpc)
+            {
+                RTSNetworkSyncManager.Instance?.BroadcastMapSelection(RTSAutoBootstrap.SelectedMap);
+                RTSNetworkSyncManager.Instance?.BroadcastMatchStart();
+            }
+
+            gameManager?.StartMatch();
+            RTSAudioManager.Instance?.PlaySound(RTSSoundType.WarHorn);
+
+            string teamBanner = (RTSGameManager.LocalPlayerTeam == UnitTeam.Enemy)
+                ? "🔴 [KIRMIZI KRALLIK + KIRMIZI AI KOMUTAN]"
+                : "🔵 [MAVİ KRALLIK + MAVİ AI KOMUTAN]";
+            SetAiStatus($"{teamBanner} Sefer Başladı! Ekonominizi kurun, AI Komutanınızla plan yapın ve zaferi kazanın!", Color.white);
+        }
+
         public void UpdatePhotonRoomLobbyUI()
         {
             var net = RTSNetworkSyncManager.Instance;
-            bool isMp = (net != null && net.isMultiplayerMode);
             UnitTeam team = (net != null) ? net.assignedTeam : RTSGameManager.LocalPlayerTeam;
             string roomCode = (net != null && !string.IsNullOrEmpty(net.matchRoomId)) ? net.matchRoomId : "ODA-101";
 
@@ -683,27 +743,11 @@ namespace CSE377.Gameplay
                 startScreenRoomInput.text = roomCode;
             }
 
-            if (startScreenModeBtnText != null)
-            {
-                startScreenModeBtnText.text = isMp
-                    ? $"🌐 MOD: PHOTON 2 KİŞİLİK ODA ({roomCode})"
-                    : "🎮 MOD: TEK OYUNCULU (PvE - Bot Akınları)";
-            }
-
-            if (startScreenModeBtn != null)
-            {
-                var img = startScreenModeBtn.GetComponent<Image>();
-                if (img != null)
-                {
-                    img.color = isMp ? new Color(0.14f, 0.45f, 0.30f) : new Color(0.14f, 0.28f, 0.46f);
-                }
-            }
-
             if (startScreenTeamBtnText != null)
             {
                 startScreenTeamBtnText.text = (team == UnitTeam.Enemy)
-                    ? "🔴 2. OYUNCU: KIRMIZI KRALLIK + KIRMIZI AI"
-                    : "🔵 1. OYUNCU: MAVİ KRALLIK + MAVİ AI";
+                    ? "🔴 2. OYUNCU (CLIENT): KIRMIZI KRALLIK + KIRMIZI AI KOMUTAN"
+                    : "🔵 1. OYUNCU (HOST): MAVİ KRALLIK + MAVİ AI KOMUTAN";
             }
 
             if (startScreenTeamBtn != null)
@@ -749,7 +793,8 @@ namespace CSE377.Gameplay
                     break;
             }
             UpdateMapSelectionUI();
-            RTSAutoBootstrap.Instance?.RebuildMapForSelectedType();
+            RTSAudioManager.Instance?.PlaySound(RTSSoundType.Click);
+            // Menüdeyken 3D arkaplanı yeniden inşa etme (yalnızca lobi bilgisini senkronla; harita SEFERİ BAŞLAT'a basılınca kurulur)
             RTSNetworkSyncManager.Instance?.BroadcastMapSelection(RTSAutoBootstrap.SelectedMap);
         }
 
@@ -784,6 +829,10 @@ namespace CSE377.Gameplay
                         startScreenMapDescText.text = "• Coğrafya: Bilinmeyen sürpriz arazi ve koşullar!\n• Saha: Prosedürel taktiksel coğrafya seçilir.\n• Taktik: Keşif atlısıyla haritayı hızla tarayıp duruma göre strateji kurun!";
                     break;
             }
+            if (mpLobbyMapBtnText != null && startScreenMapBtnText != null)
+            {
+                mpLobbyMapBtnText.text = startScreenMapBtnText.text;
+            }
         }
 
         private void Update()
@@ -798,6 +847,12 @@ namespace CSE377.Gameplay
                 else if (controlsGuideModal != null && controlsGuideModal.activeSelf)
                 {
                     controlsGuideModal.SetActive(false);
+                }
+                else if (multiplayerLobbyModal != null && multiplayerLobbyModal.activeSelf)
+                {
+                    multiplayerLobbyModal.SetActive(false);
+                    RTSNetworkSyncManager.Instance?.SetSinglePlayerMode();
+                    UpdatePhotonRoomLobbyUI();
                 }
                 else if (RTSSelectionManager.Instance != null && RTSSelectionManager.Instance.isPlacingBuilding)
                 {
@@ -915,6 +970,7 @@ namespace CSE377.Gameplay
             if (pauseMenuModal != null) pauseMenuModal.SetActive(false);
             if (gameOverModal != null) gameOverModal.SetActive(false);
             if (controlsGuideModal != null) controlsGuideModal.SetActive(false);
+            if (multiplayerLobbyModal != null) multiplayerLobbyModal.SetActive(false);
             if (inspectorPanel != null) inspectorPanel.SetActive(false);
             HideActionPanel();
             HidePlacementBanner();

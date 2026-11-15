@@ -155,7 +155,11 @@ namespace CSE377.Gameplay
 
             RefreshStatusMessage();
             OnRoomStateChanged?.Invoke();
-            RTSAutoBootstrap.Instance?.RefreshPerspectiveForLocalTeam();
+            var hud = RTSHUDController.Instance;
+            if (hud == null || hud.startScreenModal == null || !hud.startScreenModal.activeSelf)
+            {
+                RTSAutoBootstrap.Instance?.RefreshPerspectiveForLocalTeam();
+            }
         }
 
         /// <summary>
@@ -219,8 +223,12 @@ namespace CSE377.Gameplay
             RefreshStatusMessage();
             OnRoomStateChanged?.Invoke();
 
-            // Harita görüşünü ve kamera konumunu seçilen oyuncunun üssüne (Mavi Güney veya Kırmızı Kuzey) göre güncelle
-            RTSAutoBootstrap.Instance?.RefreshPerspectiveForLocalTeam();
+            // Menü açık değilse harita görüşünü ve kamera konumunu seçilen oyuncunun üssüne göre güncelle (menüdeyken arkaplan oynamaz)
+            var hud = RTSHUDController.Instance;
+            if (hud == null || hud.startScreenModal == null || !hud.startScreenModal.activeSelf)
+            {
+                RTSAutoBootstrap.Instance?.RefreshPerspectiveForLocalTeam();
+            }
 
             string teamTitle = (assignedTeam == UnitTeam.Player)
                 ? "1. OYUNCU (MAVİ KRALLIK + MAVİ AI KOMUTAN)"
@@ -540,19 +548,19 @@ namespace CSE377.Gameplay
                     {
                         RTSAutoBootstrap.SelectedMap = syncedMap;
                         RTSHUDController.Instance?.UpdateMapSelectionUI();
-                        RTSAutoBootstrap.Instance?.RebuildMapForSelectedType();
+                        var hud = RTSHUDController.Instance;
+                        if (hud == null || hud.startScreenModal == null || !hud.startScreenModal.activeSelf)
+                        {
+                            RTSAutoBootstrap.Instance?.RebuildMapForSelectedType();
+                        }
                     }
                 }
                 else if (pkt.type == "MATCH_START")
                 {
                     var hud = RTSHUDController.Instance;
-                    if (hud != null && hud.startScreenModal != null && hud.startScreenModal.activeSelf)
+                    if (hud != null && ((hud.startScreenModal != null && hud.startScreenModal.activeSelf) || (hud.multiplayerLobbyModal != null && hud.multiplayerLobbyModal.activeSelf)))
                     {
-                        hud.startScreenModal.SetActive(false);
-                        Time.timeScale = 1f;
-                        RTSAutoBootstrap.Instance?.RefreshPerspectiveForLocalTeam();
-                        RTSGameManager.Instance?.StartMatch();
-                        RTSAudioManager.Instance?.PlaySound(RTSSoundType.WarHorn);
+                        hud.LaunchMatchFromMenu(fromNetworkRpc: true);
                     }
                 }
             }
