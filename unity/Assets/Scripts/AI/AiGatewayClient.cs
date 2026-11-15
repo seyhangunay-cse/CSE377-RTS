@@ -118,12 +118,15 @@ namespace CSE377.AI
         public RTSActionPlan CreateFallbackPlan(string userPrompt, AiSafeSnapshot snapshot)
         {
             string q = (userPrompt ?? "").ToLowerInvariant().Trim();
+            bool isRedTeam = snapshot != null && snapshot.team_id == "RED";
+            string cmdPrefix = isRedTeam ? "[KIRMIZI AI KOMUTAN] " : "[MAVİ AI KOMUTAN] ";
+            string enemyDirTr = isRedTeam ? "Güneydeki Mavi" : "Kuzeydeki Kırmızı";
             var plan = new RTSActionPlan();
 
             // 1. KUŞATMA & KARARGAH YIKIMI (Siege & Assault Enemy Base)
             if (q.Contains("kuşat") || q.Contains("kusat") || q.Contains("karargah") || q.Contains("üs") || q.Contains("üssü") || q.Contains("yık") || q.Contains("kale"))
             {
-                plan.summary = "Kuşatma Doktrini: Kuzeydeki düşman karargahı ve savunma tahkimatlarını imha etmek üzere ana taarruz başlatılıyor.";
+                plan.summary = $"{cmdPrefix}Kuşatma Doktrini: {enemyDirTr} düşman karargahı ve savunma tahkimatlarını imha etmek üzere ana taarruz başlatılıyor.";
                 plan.confidence = 0.94f;
 
                 plan.actions.Add(new RTSAction
@@ -349,7 +352,7 @@ namespace CSE377.AI
             }
 
             // 9. DİNAMİK SAVUNMA & GENEL TAKTİK ANALİZİ (Default Dynamic Defense Plan)
-            plan.summary = "Kraliyet Savunma Hattı Doktrini: Kuzey geçidinden gelebilecek akınlara karşı mızrakçı duvarı örülüyor ve okçu mevzisi kuruluyor.";
+            plan.summary = $"{cmdPrefix}Kraliyet Savunma Hattı Doktrini: Sınır geçidinden gelebilecek akınlara karşı mızrakçı duvarı örülüyor ve okçu mevzisi kuruluyor.";
             plan.confidence = 0.88f;
 
             plan.actions.Add(new RTSAction

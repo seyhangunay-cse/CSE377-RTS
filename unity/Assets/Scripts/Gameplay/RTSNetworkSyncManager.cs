@@ -370,11 +370,205 @@ namespace CSE377.Gameplay
                         }
                     }
                 }
+                else if (pkt.type == "MOVE_ORDER" && !string.IsNullOrEmpty(pkt.payload))
+                {
+                    // Format: uType,fromX,fromZ,toX,toZ;uType,fromX,fromZ,toX,toZ...
+                    string[] entries = pkt.payload.Split(';');
+                    var usedUnits = new HashSet<RTSUnit>();
+                    foreach (string entry in entries)
+                    {
+                        if (string.IsNullOrWhiteSpace(entry)) continue;
+                        string[] f = entry.Split(',');
+                        if (f.Length >= 5)
+                        {
+                            string uType = f[0].ToLowerInvariant();
+                            float fromX = float.Parse(f[1], CultureInfo.InvariantCulture);
+                            float fromZ = float.Parse(f[2], CultureInfo.InvariantCulture);
+                            float toX = float.Parse(f[3], CultureInfo.InvariantCulture);
+                            float toZ = float.Parse(f[4], CultureInfo.InvariantCulture);
+
+                            RTSUnit bestMatch = FindClosestTeamUnit(senderTeam, uType, new Vector3(fromX, 0f, fromZ), usedUnits);
+                            if (bestMatch != null)
+                            {
+                                usedUnits.Add(bestMatch);
+                                var vil = bestMatch.GetComponent<RTSVillager>();
+                                if (vil != null) vil.CancelTask();
+                                bestMatch.MoveTo(new Vector3(toX, 0f, toZ), isManual: true);
+                            }
+                        }
+                    }
+                }
+                else if (pkt.type == "ATTACK_ORDER" && !string.IsNullOrEmpty(pkt.payload))
+                {
+                    // Format: isBld|targetX|targetZ|uType,fromX,fromZ;uType,fromX,fromZ...
+                    string[] mainParts = pkt.payload.Split('|');
+                    if (mainParts.Length >= 4)
+                    {
+                        bool isBld = mainParts[0] == "1";
+                        float tx = float.Parse(mainParts[1], CultureInfo.InvariantCulture);
+                        float tz = float.Parse(mainParts[2], CultureInfo.InvariantCulture);
+                        Vector3 targetPos = new Vector3(tx, 0f, tz);
+
+                        RTSBuilding targetBld = null;
+                        RTSUnit targetUnit = null;
+                        if (isBld)
+                        {
+                            float minD = 12f;
+                            foreach (var b in RTSBuilding.AllBuildings)
+                            {
+                                if (b != null && b.team != senderTeam && b.currentHp > 0)
+                                {
+                                    float d = Vector3.Distance(new Vector3(b.transform.position.x, 0f, b.transform.position.z), targetPos);
+                                    if (d < minD) { minD = d; targetBld = b; }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            float minD = 12f;
+                            foreach (var u in RTSUnit.AllUnits)
+                            {
+                                if (u != null && u.team != senderTeam && u.currentHp > 0)
+                                {
+                                    float d = Vector3.Distance(new Vector3(u.transform.position.x, 0f, u.transform.position.z), targetPos);
+                                    if (d < minD) { minD = d; targetUnit = u; }
+                                }
+                            }
+                        }
+
+                        var usedUnits = new HashSet<RTSUnit>();
+                        string[] unitEntries = mainParts[3].Split(';');
+                        foreach (string entry in unitEntries)
+                        {
+                            if (string.IsNullOrWhiteSpace(entry)) continue;
+                            string[] f = entry.Split(',');
+                            if (f.Length >= 3)
+                            {
+                                string uType = f[0].ToLowerInvariant();
+                                float fx = float.Parse(f[1], CultureInfo.InvariantCulture);
+                                float fz = float.Parse(f[2], CultureInfo.InvariantCulture);
+                                RTSUnit attacker = FindClosestTeamUnit(senderTeam, uType, new Vector3(fx, 0f, fz), usedUnits);
+                                if (attacker != null)
+                                {
+                                    usedUnits.Add(attacker);
+                                    if (isBld && targetBld != null) attacker.AttackBuilding(targetBld);
+                                    else if (!isBld && targetUnit != null) attacker.AttackTarget(targetUnit);
+                                    else attacker.MoveTo(targetPos, isManual: true);
+                                }
+                            }
+                        }
+                    }
+                }
+                else if (pkt.type == "VILLAGER_ORDER" && !string.IsNullOrEmpty(pkt.payload))
+                {
+                    // Format: kind|targetX|targetZ|fromX,fromZ;fromX,fromZ...
+                    string[] mainParts = pkt.payload.Split('|');
+                    if (mainParts.Length >= 4)
+                    {
+                        string kind = mainParts[0];
+                        float tx = float.Parse(mainParts[1], CultureInfo.InvariantCulture);
+                        float tz = float.Parse(mainParts[2], CultureInfo.InvariantCulture);
+                        Vector3 targetPos = new Vector3(tx, 0f, tz);
+
+                        RTSResourceSource targetRes = null;
+                        RTSBuilding targetBld = null;
+                        if (kind == "HARVEST")
+                        {
+                            float minD = 10f;
+                            foreach (var r in RTSResourceSource.AllSources)
+                            {
+                                if (r != null && r.remainingAmount > 0)
+                                {
+                                    float d = Vector3.Distance(new Vector3(r.transform.position.x, 0f, r.transform.position.z), targetPos);
+                                    if (d < minD) { minD = d; targetRes = r; }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            float minD = 12f;
+                            foreach (var b in RTSBuilding.AllBuildings)
+                            {
+                                if (b != null && b.team == senderTeam && b.currentHp > 0)
+                                {
+                                    float d = Vector3.Distance(new Vector3(b.transform.position.x, 0f, b.transform.position.z), targetPos);
+                                    if (d < minD) { minD = d; targetBld = b; }
+                                }
+                            }
+                        }
+
+                        var usedUnits = new HashSet<RTSUnit>();
+                        string[] entries = mainParts[3].Split(';');
+                        foreach (string entry in entries)
+                        {
+                            if (string.IsNullOrWhiteSpace(entry)) continue;
+                            string[] f = entry.Split(',');
+                            if (f.Length >= 2)
+                            {
+                                float fx = float.Parse(f[0], CultureInfo.InvariantCulture);
+                                float fz = float.Parse(f[1], CultureInfo.InvariantCulture);
+                                RTSUnit vilUnit = FindClosestTeamUnit(senderTeam, "villager", new Vector3(fx, 0f, fz), usedUnits);
+                                if (vilUnit != null)
+                                {
+                                    usedUnits.Add(vilUnit);
+                                    var vil = vilUnit.GetComponent<RTSVillager>();
+                                    if (vil != null)
+                                    {
+                                        if (kind == "HARVEST" && targetRes != null) vil.AssignHarvestTask(targetRes);
+                                        else if (kind == "BUILD" && targetBld != null) vil.AssignBuildTask(targetBld);
+                                        else if (kind == "REPAIR" && targetBld != null) vil.AssignRepairTask(targetBld);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                else if (pkt.type == "MAP_SYNC" && !string.IsNullOrEmpty(pkt.payload))
+                {
+                    if (Enum.TryParse(pkt.payload, out RTSMapType syncedMap) && RTSAutoBootstrap.SelectedMap != syncedMap)
+                    {
+                        RTSAutoBootstrap.SelectedMap = syncedMap;
+                        RTSHUDController.Instance?.UpdateMapSelectionUI();
+                        RTSAutoBootstrap.Instance?.RebuildMapForSelectedType();
+                    }
+                }
+                else if (pkt.type == "MATCH_START")
+                {
+                    var hud = RTSHUDController.Instance;
+                    if (hud != null && hud.startScreenModal != null && hud.startScreenModal.activeSelf)
+                    {
+                        hud.startScreenModal.SetActive(false);
+                        Time.timeScale = 1f;
+                        RTSAutoBootstrap.Instance?.RefreshPerspectiveForLocalTeam();
+                        RTSGameManager.Instance?.StartMatch();
+                        RTSAudioManager.Instance?.PlaySound(RTSSoundType.WarHorn);
+                    }
+                }
             }
             catch (Exception ex)
             {
                 Debug.LogWarning($"[PHOTON RPC] Paket işleme uyarısı: {ex.Message}");
             }
+        }
+
+        private RTSUnit FindClosestTeamUnit(UnitTeam team, string unitType, Vector3 origin, HashSet<RTSUnit> exclude)
+        {
+            RTSUnit best = null;
+            float bestDist = float.MaxValue;
+            foreach (var u in RTSUnit.AllUnits)
+            {
+                if (u == null || u.currentHp <= 0 || u.team != team) continue;
+                if (exclude != null && exclude.Contains(u)) continue;
+                if (!string.IsNullOrEmpty(unitType) && u.unitType.ToLowerInvariant() != unitType) continue;
+
+                float d = Vector3.Distance(new Vector3(u.transform.position.x, 0f, u.transform.position.z), origin);
+                if (d < bestDist)
+                {
+                    bestDist = d;
+                    best = u;
+                }
+            }
+            return best;
         }
 
         /// <summary>
@@ -415,6 +609,89 @@ namespace CSE377.Gameplay
             if (!isMultiplayerMode || !isRoomConnected) return;
             string payload = string.Format(CultureInfo.InvariantCulture, "{0}|{1:F2}|{2:F2}|{3:F2}|{4}", bType, pos.x, pos.y, pos.z, startBuilt ? 1 : 0);
             SendRawPacket("SPAWN_BLD", payload);
+        }
+
+        /// <summary>
+        /// Manuel intikal (Move) emirlerini birim bazlı koordinatlarla Photon odasındaki diğer oyuncuya yayınlar.
+        /// </summary>
+        public void BroadcastMoveOrders(List<(RTSUnit unit, Vector3 dest)> unitMoves)
+        {
+            if (!isMultiplayerMode || !isRoomConnected || unitMoves == null || unitMoves.Count == 0) return;
+            var sb = new StringBuilder();
+            for (int i = 0; i < unitMoves.Count; i++)
+            {
+                var item = unitMoves[i];
+                if (item.unit == null) continue;
+                if (sb.Length > 0) sb.Append(';');
+                sb.AppendFormat(CultureInfo.InvariantCulture, "{0},{1:F1},{2:F1},{3:F1},{4:F1}",
+                    item.unit.unitType.ToLowerInvariant(),
+                    item.unit.transform.position.x,
+                    item.unit.transform.position.z,
+                    item.dest.x,
+                    item.dest.z);
+            }
+            if (sb.Length > 0) SendRawPacket("MOVE_ORDER", sb.ToString());
+        }
+
+        /// <summary>
+        /// Manuel birim veya bina saldırı emirlerini Photon odasındaki diğer oyuncuya yayınlar.
+        /// </summary>
+        public void BroadcastAttackOrder(List<RTSUnit> attackers, Vector3 targetPos, bool isBuildingTarget)
+        {
+            if (!isMultiplayerMode || !isRoomConnected || attackers == null || attackers.Count == 0) return;
+            var sb = new StringBuilder();
+            sb.AppendFormat(CultureInfo.InvariantCulture, "{0}|{1:F1}|{2:F1}|", isBuildingTarget ? 1 : 0, targetPos.x, targetPos.z);
+            bool any = false;
+            for (int i = 0; i < attackers.Count; i++)
+            {
+                var u = attackers[i];
+                if (u == null) continue;
+                if (any) sb.Append(';');
+                sb.AppendFormat(CultureInfo.InvariantCulture, "{0},{1:F1},{2:F1}",
+                    u.unitType.ToLowerInvariant(),
+                    u.transform.position.x,
+                    u.transform.position.z);
+                any = true;
+            }
+            if (any) SendRawPacket("ATTACK_ORDER", sb.ToString());
+        }
+
+        /// <summary>
+        /// Manuel köylü kaynak toplama / inşaat / tamirat emirlerini Photon odasındaki diğer oyuncuya yayınlar.
+        /// </summary>
+        public void BroadcastVillagerOrder(List<RTSUnit> selectedUnits, Vector3 targetPos, string kind)
+        {
+            if (!isMultiplayerMode || !isRoomConnected || selectedUnits == null || selectedUnits.Count == 0) return;
+            var sb = new StringBuilder();
+            sb.AppendFormat(CultureInfo.InvariantCulture, "{0}|{1:F1}|{2:F1}|", kind, targetPos.x, targetPos.z);
+            bool any = false;
+            for (int i = 0; i < selectedUnits.Count; i++)
+            {
+                var u = selectedUnits[i];
+                if (u == null || u.GetComponent<RTSVillager>() == null) continue;
+                if (any) sb.Append(';');
+                sb.AppendFormat(CultureInfo.InvariantCulture, "{0:F1},{1:F1}", u.transform.position.x, u.transform.position.z);
+                any = true;
+            }
+            if (any) SendRawPacket("VILLAGER_ORDER", sb.ToString());
+        }
+
+        /// <summary>
+        /// Lobi ekranında seçilen haritayı odadaki diğer oyuncuya senkronize eder.
+        /// </summary>
+        public void BroadcastMapSelection(RTSMapType mapType)
+        {
+            if (!isMultiplayerMode || !isRoomConnected) return;
+            SendRawPacket("MAP_SYNC", mapType.ToString());
+        }
+
+        /// <summary>
+        /// Sefer başlatıldığında odadaki diğer oyuncunun da maça girmesini sağlar.
+        /// </summary>
+        public void BroadcastMatchStart()
+        {
+            if (!isMultiplayerMode || !isRoomConnected) return;
+            SendRawPacket("MATCH_START", "1");
         }
 
         /// <summary>

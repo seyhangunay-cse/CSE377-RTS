@@ -515,6 +515,7 @@ namespace CSE377.Gameplay
                             if (leadUnit != null) RTSAudioManager.Instance?.PlayUnitVoice(leadUnit.unitType, "attack", force: true);
 
                             RTSHUDController.Instance?.SetAiStatus($"[SALDIRI] \"{unit.unitType.ToUpper()} hedefine taarruz!\"", new Color(1f, 0.35f, 0.35f));
+                            RTSNetworkSyncManager.Instance?.BroadcastAttackOrder(selectedUnits, unit.transform.position, false);
                             foreach (var u in selectedUnits)
                             {
                                 if (u != null && u.team == myTeam) u.AttackTarget(unit);
@@ -562,6 +563,7 @@ namespace CSE377.Gameplay
                             if (leadSiege != null) RTSAudioManager.Instance?.PlayUnitVoice(leadSiege.unitType, "attack", force: true);
 
                             RTSHUDController.Instance?.SetAiStatus($"[KUŞATMA] \"{building.displayName.ToUpper()} yerle bir edilecek! Hücum!\"", new Color(1f, 0.45f, 0.15f));
+                            RTSNetworkSyncManager.Instance?.BroadcastAttackOrder(selectedUnits, building.transform.position, true);
                             foreach (var u in selectedUnits)
                             {
                                 if (u != null && u.team == myTeam) u.AttackBuilding(building);
@@ -931,6 +933,7 @@ namespace CSE377.Gameplay
 
                     if (assignedVillager)
                     {
+                        RTSNetworkSyncManager.Instance?.BroadcastVillagerOrder(selectedUnits, resourceSource.transform.position, "HARVEST");
                         SpawnClickFeedback(resourceSource.transform.position, Color.yellow);
                         RTSAudioManager.Instance?.PlayVoice("villager_work", force: true);
                         if (resourceSource.resourceType == RTSResourceType.Gold)
@@ -1003,6 +1006,7 @@ namespace CSE377.Gameplay
 
                     if (assignedVillager)
                     {
+                        RTSNetworkSyncManager.Instance?.BroadcastVillagerOrder(selectedUnits, buildingTarget.transform.position, "BUILD");
                         SpawnClickFeedback(buildingTarget.transform.position, Color.yellow);
                         RTSAudioManager.Instance?.PlayVoice("villager_build", force: true);
                         RTSAudioManager.Instance?.PlaySound(RTSSoundType.HammerBuild);
@@ -1030,6 +1034,7 @@ namespace CSE377.Gameplay
 
                     if (assignedRepairVillager)
                     {
+                        RTSNetworkSyncManager.Instance?.BroadcastVillagerOrder(selectedUnits, buildingTarget.transform.position, "REPAIR");
                         SpawnClickFeedback(buildingTarget.transform.position, new Color(0.2f, 0.8f, 1f));
                         RTSAudioManager.Instance?.PlayVoice("villager_build", force: true);
                         RTSAudioManager.Instance?.PlaySound(RTSSoundType.HammerBuild);
@@ -1099,6 +1104,7 @@ namespace CSE377.Gameplay
                     if (leadSiege != null) RTSAudioManager.Instance?.PlayUnitVoice(leadSiege.unitType, "attack", force: true);
 
                     RTSHUDController.Instance?.SetAiStatus($"[KUŞATMA] \"{enemyBuilding.displayName.ToUpper()} yerle bir edilecek! Hücum!\"", new Color(1f, 0.45f, 0.15f));
+                    RTSNetworkSyncManager.Instance?.BroadcastAttackOrder(selectedUnits, enemyBuilding.transform.position, true);
                     foreach (var u in selectedUnits)
                     {
                         if (u != null && u.team == myTeam) u.AttackBuilding(enemyBuilding);
@@ -1122,6 +1128,7 @@ namespace CSE377.Gameplay
                     if (leadUnit != null) RTSAudioManager.Instance?.PlayUnitVoice(leadUnit.unitType, "attack", force: true);
 
                     RTSHUDController.Instance?.SetAiStatus($"[SALDIRI] \"Kılıçlar çekilsin! Zafer bizim olacak!\"", new Color(1f, 0.35f, 0.35f));
+                    RTSNetworkSyncManager.Instance?.BroadcastAttackOrder(selectedUnits, enemyUnit.transform.position, false);
                     foreach (var u in selectedUnits)
                     {
                         if (u != null && u.team == myTeam) u.AttackTarget(enemyUnit);
@@ -1423,8 +1430,12 @@ namespace CSE377.Gameplay
 
             Debug.Log($"[RTSSelectionManager] {count} birime taktiksel ordu formasyonu intikal emri verildi -> {centerDestination}");
 
+            var netMoves = new List<(RTSUnit unit, Vector3 dest)>();
+
             if (count == 1)
             {
+                netMoves.Add((selectedUnits[0], centerDestination));
+                RTSNetworkSyncManager.Instance?.BroadcastMoveOrders(netMoves);
                 selectedUnits[0].MoveTo(centerDestination, isManual: true);
                 return;
             }
@@ -1470,21 +1481,21 @@ namespace CSE377.Gameplay
             // 1. Kademe: Ön Hat (Piyadeler)
             if (frontline.Count > 0)
             {
-                AssignRankFormation(frontline, centerDestination, marchDir, rightDir, currentRow, spacingX, spacingZ);
+                AssignRankFormation(frontline, centerDestination, marchDir, rightDir, currentRow, spacingX, spacingZ, netMoves);
                 currentRow += Mathf.CeilToInt((float)frontline.Count / 6);
             }
 
             // 2. Kademe: Arka Hat (Okçular - Piyadelerin hemen arkasında korumalı ateş hattı)
             if (backline.Count > 0)
             {
-                AssignRankFormation(backline, centerDestination, marchDir, rightDir, currentRow, spacingX, spacingZ);
+                AssignRankFormation(backline, centerDestination, marchDir, rightDir, currentRow, spacingX, spacingZ, netMoves);
                 currentRow += Mathf.CeilToInt((float)backline.Count / 6);
             }
 
             // 3. Kademe: Kuşatma & Destek (Mancınıklar ve Köylüler - En geride güvenli merkez)
             if (support.Count > 0)
             {
-                AssignRankFormation(support, centerDestination, marchDir, rightDir, currentRow, spacingX + 0.8f, spacingZ + 0.8f);
+                AssignRankFormation(support, centerDestination, marchDir, rightDir, currentRow, spacingX + 0.8f, spacingZ + 0.8f, netMoves);
             }
 
             // 4. Kademe: Yan Kanatlar (Süvariler - Ordunun sol ve sağ kanatlarında hücum düzeni)
@@ -1499,12 +1510,15 @@ namespace CSE377.Gameplay
                     float depthOffset = (flankIndex * 1.8f);
 
                     Vector3 flankDest = centerDestination + rightDir * lateralOffset - marchDir * depthOffset;
+                    netMoves.Add((flanks[i], flankDest));
                     flanks[i].MoveTo(flankDest, isManual: true);
                 }
             }
+
+            RTSNetworkSyncManager.Instance?.BroadcastMoveOrders(netMoves);
         }
 
-        private void AssignRankFormation(List<RTSUnit> units, Vector3 center, Vector3 forward, Vector3 right, int rankIndex, float spX, float spZ)
+        private void AssignRankFormation(List<RTSUnit> units, Vector3 center, Vector3 forward, Vector3 right, int rankIndex, float spX, float spZ, List<(RTSUnit unit, Vector3 dest)> netMoves = null)
         {
             int maxCols = 6;
             for (int i = 0; i < units.Count; i++)
@@ -1517,6 +1531,7 @@ namespace CSE377.Gameplay
                 float zOff = (rankIndex + subRow) * spZ;
 
                 Vector3 dest = center + right * xOff - forward * zOff;
+                netMoves?.Add((units[i], dest));
                 units[i].MoveTo(dest, isManual: true);
             }
         }

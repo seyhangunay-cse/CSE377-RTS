@@ -393,13 +393,17 @@ def validate_action_plan(data: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
 def run_agent(user_query: str, max_steps: int = 6) -> Dict[str, Any]:
     """
     Ollama ile çok adımlı dinamik agent loop çalıştırır ve doğrulanmış ActionPlan döner.
+    Aktif takım kimliğine (BLUE / RED) göre ilgili krallığın AI Komutanı olarak hareket eder.
     """
+    active_team = getattr(server, "ACTIVE_TEAM_ID", "BLUE")
+    cmd_tag = "[KIRMIZI AI KOMUTAN]" if active_team == "RED" else "[MAVİ AI KOMUTAN]"
+
     # 1. Hızlı Taarruz ve Kuşatma Tespiti (Attack / Kuşatma / Hücum / Karargah)
     q_lower = user_query.lower()
     if any(k in q_lower for k in ["saldır", "saldir", "taarruz", "hücum", "hucum", "kuşat", "kusat", "yok et", "öldür", "oldur", "vur", "kaleye", "karargah"]):
         target_zone = "enemy_base" if any(k in q_lower for k in ["karargah", "kale", "üs", "us", "kamp", "camp", "bina"]) else "north_gate"
         plan = {
-            "summary": f"Taktiksel Kuşatma ve Taarruz Emri: Mevcut ordumuz {target_zone} bölgesindeki düşman hedeflerine genel taarruza geçiriliyor.",
+            "summary": f"{cmd_tag} Taktiksel Kuşatma ve Taarruz Emri: Mevcut ordumuz {target_zone} bölgesindeki düşman hedeflerine genel taarruza geçiriliyor.",
             "confidence": 0.96,
             "actions": [
                 {
@@ -503,13 +507,18 @@ def run_agent(user_query: str, max_steps: int = 6) -> Dict[str, Any]:
         print(f"\n[RTS STRATEGIC COMMANDER] Hızlı taarruz planı onaylandı: {plan['summary']}")
         return plan
 
+    team_role_note = (
+        "\nAKTİF KOMUTAN KİMLİĞİN: KIRMIZI KRALLIK AI KOMUTANI (2. Oyuncu / Kuzey Üssü)."
+        if active_team == "RED"
+        else "\nAKTİF KOMUTAN KİMLİĞİN: MAVİ KRALLIK AI KOMUTANI (1. Oyuncu / Güney Üssü)."
+    )
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": SYSTEM_PROMPT + team_role_note},
         {"role": "user", "content": user_query}
     ]
     
     print("\n" + "=" * 65)
-    print(f"[RTS STRATEGIC COMMANDER] Yeni Görev Başlatıldı")
+    print(f"[RTS STRATEGIC COMMANDER - {active_team}] Yeni Görev Başlatıldı")
     print(f"[KULLANICI TALEBİ]: {user_query}")
     print("=" * 65)
     

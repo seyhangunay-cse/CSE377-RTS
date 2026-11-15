@@ -9,7 +9,21 @@ if rag_dir not in sys.path:
 
 from rag_engine import get_rag_engine  # type: ignore
 
-from mcp.server import MCPServer
+try:
+    from mcp.server import MCPServer  # type: ignore
+except ImportError:
+    try:
+        from mcp.server.fastmcp import FastMCP as MCPServer  # type: ignore
+    except ImportError:
+        class MCPServer:  # type: ignore
+            def __init__(self, name: str):
+                self.name = name
+            def tool(self):
+                def decorator(fn):
+                    return fn
+                return decorator
+            def run(self):
+                pass
 
 # MCP Sunucusunu Başlat (Kılavuzdaki v2 standardı)
 mcp = MCPServer("RTS Strategic Commander")
@@ -41,7 +55,7 @@ TEAM_SAFE_STATES = {
 ACTIVE_TEAM_ID = "BLUE"
 CURRENT_SAFE_STATE = TEAM_SAFE_STATES["BLUE"]
 
-def set_active_team_snapshot(team_id: str, snapshot: dict):
+def set_active_team_snapshot(team_id: str = "BLUE", snapshot: dict = None):
     """Belirli bir takımın (BLUE veya RED) güvenli Savaş Sisi snapshot'ını günceller ve aktif komutan bağlamını seçer."""
     global ACTIVE_TEAM_ID, CURRENT_SAFE_STATE
     norm_team = "RED" if str(team_id).upper().strip() == "RED" else "BLUE"

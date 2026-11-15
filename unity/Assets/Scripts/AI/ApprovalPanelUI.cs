@@ -113,8 +113,12 @@ namespace CSE377.AI
             if (confidenceText != null)
                 confidenceText.text = $"Güven Seviyesi: %{(int)(plan.confidence * 100)}";
 
+            string teamCmdLabel = (activeSnapshot != null && activeSnapshot.team_id == "RED")
+                ? "🔴 Kırmızı AI Komutanı: Oyuncu onayı bekleniyor..."
+                : "🔵 Mavi AI Komutanı: Oyuncu onayı bekleniyor...";
+
             if (validationStatusText != null)
-                validationStatusText.text = "Oyuncu onayı bekleniyor...";
+                validationStatusText.text = teamCmdLabel;
 
             PopulateActionsList(plan.actions);
         }

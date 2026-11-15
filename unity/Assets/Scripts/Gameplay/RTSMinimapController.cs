@@ -588,6 +588,7 @@ namespace CSE377.Gameplay
 
                         if (damagedBuilding != null)
                         {
+                            RTSNetworkSyncManager.Instance?.BroadcastVillagerOrder(selMgr.selectedUnits, damagedBuilding.transform.position, "REPAIR");
                             foreach (var unitItem in selMgr.selectedUnits)
                             {
                                 if (unitItem != null)
@@ -624,6 +625,7 @@ namespace CSE377.Gameplay
 
                         if (targetResource != null)
                         {
+                            RTSNetworkSyncManager.Instance?.BroadcastVillagerOrder(selMgr.selectedUnits, targetResource.transform.position, "HARVEST");
                             foreach (var unitItem in selMgr.selectedUnits)
                             {
                                 if (unitItem != null)
@@ -661,6 +663,7 @@ namespace CSE377.Gameplay
 
                     if (targetEnemy != null)
                     {
+                        RTSNetworkSyncManager.Instance?.BroadcastAttackOrder(selMgr.selectedUnits, targetEnemy.transform.position, false);
                         foreach (var myUnit in selMgr.selectedUnits)
                         {
                             if (myUnit != null) myUnit.AttackTarget(targetEnemy);
@@ -698,6 +701,7 @@ namespace CSE377.Gameplay
 
                     if (targetEnemyBuilding != null)
                     {
+                        RTSNetworkSyncManager.Instance?.BroadcastAttackOrder(selMgr.selectedUnits, targetEnemyBuilding.transform.position, true);
                         foreach (var myUnit in selMgr.selectedUnits)
                         {
                             if (myUnit != null && myUnit.team == myTeam) myUnit.AttackBuilding(targetEnemyBuilding);

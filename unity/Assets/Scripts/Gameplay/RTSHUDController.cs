@@ -314,8 +314,16 @@ namespace CSE377.Gameplay
 
             if (gatewayClient != null)
             {
-                gatewayClient.OnRequestStarted += () => SetAiStatus("Stratejik Komutan (Ollama) plan hazırlıyor...", Color.cyan);
-                gatewayClient.OnPlanReceived += (plan) => SetAiStatus("Plan Hazır! Onayınız bekleniyor.", Color.green);
+                gatewayClient.OnRequestStarted += () =>
+                {
+                    string cmdTag = (RTSGameManager.LocalPlayerTeam == UnitTeam.Enemy) ? "🔴 Kırmızı AI Komutanı" : "🔵 Mavi AI Komutanı";
+                    SetAiStatus($"{cmdTag} (Ollama) stratejik plan hazırlıyor...", Color.cyan);
+                };
+                gatewayClient.OnPlanReceived += (plan) =>
+                {
+                    string cmdTag = (RTSGameManager.LocalPlayerTeam == UnitTeam.Enemy) ? "🔴 Kırmızı AI Komutanı" : "🔵 Mavi AI Komutanı";
+                    SetAiStatus($"{cmdTag}: Plan Hazır! Onayınız bekleniyor.", Color.green);
+                };
                 gatewayClient.OnPlanRequestFailed += (err) => SetAiStatus($"Hata: {err}", Color.red);
             }
 
@@ -328,6 +336,7 @@ namespace CSE377.Gameplay
                     Time.timeScale = 1f;
                     // Seçilen takıma (Mavi veya Kırmızı) göre kamera ve savaş sisini hizala
                     RTSAutoBootstrap.Instance?.RefreshPerspectiveForLocalTeam();
+                    RTSNetworkSyncManager.Instance?.BroadcastMatchStart();
                     gameManager?.StartMatch();
                     RTSAudioManager.Instance?.PlaySound(RTSSoundType.WarHorn);
 
@@ -741,6 +750,7 @@ namespace CSE377.Gameplay
             }
             UpdateMapSelectionUI();
             RTSAutoBootstrap.Instance?.RebuildMapForSelectedType();
+            RTSNetworkSyncManager.Instance?.BroadcastMapSelection(RTSAutoBootstrap.SelectedMap);
         }
 
         public void UpdateMapSelectionUI()
