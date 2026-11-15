@@ -25,6 +25,7 @@ namespace CSE377.Gameplay
         public string guestName;
         public string guestInstanceId;
         public string mapType;
+        public int matchSeed = 133742;
         public int playerCount;
         public long lastUpdatedTicks;
         public bool matchStarted;
@@ -81,28 +82,45 @@ namespace CSE377.Gameplay
         private int remotePort = 47778;
         private float nextHeartbeatTime = 0f;
         private float nextRegistryPollTime = 0f;
+        private float nextPacketLogPollTime = 0f;
+        private float nextLiveWorldSyncTime = 0f;
         private float lastRemoteHeartbeatTime = -999f;
+        private bool hasLaunchedCurrentRoomMatch = false;
         private readonly ConcurrentQueue<string> incomingPackets = new ConcurrentQueue<string>();
         private readonly List<RoomListingInfo> activeOpenRooms = new List<RoomListingInfo>();
+        private readonly HashSet<string> processedPacketIds = new HashSet<string>();
 
         public IReadOnlyList<RoomListingInfo> ActiveOpenRooms => activeOpenRooms;
 
         private string RegistryFilePath => Path.Combine(Path.GetTempPath(), "CSE377_PhotonLobby_Rooms.json");
+        private string RoomPacketLogFilePath => Path.Combine(Path.GetTempPath(), $"CSE377_PhotonRoom_{matchRoomId}_Packets.json");
 
         [Serializable]
         private class NetworkPacket
         {
+            public string packetId;
+            public long sentTicks;
             public string appId;
             public string room;
             public string senderName;
             public string senderInstanceId;
-            public string type;     // HELLO, PLAN, SPAWN_UNIT, SPAWN_BLD, MOVE_ORDER, ATTACK_ORDER, VILLAGER_ORDER, MAP_SYNC, MATCH_START
+            public string type;     // HELLO, PLAN, SPAWN_UNIT, SPAWN_BLD, MOVE_ORDER, ATTACK_ORDER, VILLAGER_ORDER, MAP_SYNC, MATCH_START, TEAM_STATE_SYNC
             public string team;     // Player / Enemy
             public string payload;  // JSON veya parametre dizgesi
         }
 
+        [Serializable]
+        private class RoomPacketLogData
+        {
+            public List<NetworkPacket> packets = new List<NetworkPacket>();
+        }
+
         private void Awake()
         {
+            Application.runInBackground = true;
+#if UNITY_EDITOR
+            UnityEditor.PlayerSettings.runInBackground = true;
+#endif
             if (Instance == null)
             {
                 Instance = this;
@@ -118,6 +136,7 @@ namespace CSE377.Gameplay
 
         private void Start()
         {
+            Application.runInBackground = true;
             nextRivalActionTime = Time.time + 15f;
             RefreshOpenRoomsRegistry();
             RefreshStatusMessage();
@@ -137,10 +156,17 @@ namespace CSE377.Gameplay
                 ProcessIncomingPacket(rawJson);
             }
 
+            // Çift kanallı (Dual-Channel) paylaşımlı oda paket kuyruğunu her 0.12 saniyede bir kontrol et (UDP paket kaybını %100 önler)
+            if (isMultiplayerMode && isRoomConnected && Time.unscaledTime >= nextPacketLogPollTime)
+            {
+                nextPacketLogPollTime = Time.unscaledTime + 0.12f;
+                PollSharedRoomPackets();
+            }
+
             // Açık odalar listesini ve oda durumunu periyodik olarak yenile
             if (Time.unscaledTime >= nextRegistryPollTime)
             {
-                nextRegistryPollTime = Time.unscaledTime + 1.2f;
+                nextRegistryPollTime = Time.unscaledTime + 0.6f;
                 RefreshOpenRoomsRegistry();
             }
 
@@ -151,6 +177,13 @@ namespace CSE377.Gameplay
                 {
                     nextHeartbeatTime = Time.unscaledTime + 1.5f;
                     SendRawPacket("HELLO", localPlayerName);
+                }
+
+                // Maç başladıysa her iki sahnenin (birim konumları, bina inşaatları ve can değerleri) birebir eşit ilerlemesi için canlı durum senkronizasyonu gönder
+                if (hasLaunchedCurrentRoomMatch && Time.unscaledTime >= nextLiveWorldSyncTime)
+                {
+                    nextLiveWorldSyncTime = Time.unscaledTime + 0.25f;
+                    BroadcastTeamLiveState();
                 }
 
                 bool udpPeerAlive = (Time.unscaledTime - lastRemoteHeartbeatTime < 6.0f);
@@ -225,9 +258,12 @@ namespace CSE377.Gameplay
             Debug.Log($"[PHOTON TEST] '{matchRoomId}' odasına Sanal 2. Oyuncu ({guestPlayerName}) bağlandı! Oda 2/2 Hazır.");
         }
 
+        /// <summary>
+        /// Yalnızca odayı kuran oyuncu (isHost == true) ve odada 2/2 oyuncu hazır olduğunda oyunu başlatabilir!
+        /// </summary>
         public bool CanStartMultiplayerMatch()
         {
-            return isMultiplayerMode && isRoomConnected && connectedPlayersCount >= 2;
+            return isMultiplayerMode && isRoomConnected && isHost && connectedPlayersCount >= 2;
         }
 
         public void SetPlayerName(string newName)
@@ -272,6 +308,7 @@ namespace CSE377.Gameplay
             isHost = true;
             assignedTeam = UnitTeam.Player;
             connectedPlayersCount = 0;
+            hasLaunchedCurrentRoomMatch = false;
             hostPlayerName = "";
             hostInstanceId = "";
             guestPlayerName = "";
@@ -295,6 +332,7 @@ namespace CSE377.Gameplay
             isHost = true;
             assignedTeam = UnitTeam.Player;
             connectedPlayersCount = 0;
+            hasLaunchedCurrentRoomMatch = false;
             hostPlayerName = "";
             hostInstanceId = "";
             guestPlayerName = "";
@@ -394,6 +432,7 @@ namespace CSE377.Gameplay
             isHost = (teamRole == UnitTeam.Player);
             isMultiplayerMode = true;
             isRoomConnected = true;
+            hasLaunchedCurrentRoomMatch = false;
             enableRivalAi = false;
 
             if (isHost)
@@ -511,6 +550,7 @@ namespace CSE377.Gameplay
                             myRoom.hostName = localPlayerName;
                             myRoom.hostInstanceId = clientInstanceId;
                             myRoom.mapType = RTSAutoBootstrap.SelectedMap.ToString();
+                            myRoom.matchSeed = RTSAutoBootstrap.MatchRandomSeed;
 
                             if (myRoom.guestInstanceId == clientInstanceId)
                             {
@@ -538,6 +578,10 @@ namespace CSE377.Gameplay
                                 hostPlayerName = myRoom.hostName;
                                 hostInstanceId = myRoom.hostInstanceId;
                             }
+                            if (myRoom.matchSeed != 0)
+                            {
+                                RTSAutoBootstrap.MatchRandomSeed = myRoom.matchSeed;
+                            }
                             if (!string.IsNullOrEmpty(myRoom.mapType) && Enum.TryParse(myRoom.mapType, out RTSMapType hostMap) && RTSAutoBootstrap.SelectedMap != hostMap)
                             {
                                 RTSAutoBootstrap.SelectedMap = hostMap;
@@ -558,13 +602,20 @@ namespace CSE377.Gameplay
                         RefreshStatusMessage();
                     }
 
-                    // Eğer kurucu maçı başlattıysa (matchStarted == true), odaya bağlı 2. oyuncuda da maçı otomatik başlat!
-                    if (!isHost && myRoom.matchStarted)
+                    // Eğer kurucu maçı başlattıysa (matchStarted == true), odaya bağlı 2. oyuncuda da maçı aynı harita ve tohumla otomatik başlat!
+                    if (!isHost && myRoom.matchStarted && !hasLaunchedCurrentRoomMatch)
                     {
+                        hasLaunchedCurrentRoomMatch = true;
+                        if (myRoom.matchSeed != 0)
+                        {
+                            RTSAutoBootstrap.MatchRandomSeed = myRoom.matchSeed;
+                        }
+                        if (!string.IsNullOrEmpty(myRoom.mapType) && Enum.TryParse(myRoom.mapType, out RTSMapType startMap))
+                        {
+                            RTSAutoBootstrap.SelectedMap = startMap;
+                        }
                         var hud = RTSHUDController.Instance;
-                        if (hud != null && ((hud.startScreenModal != null && hud.startScreenModal.activeSelf)
-                            || (hud.multiplayerLobbyModal != null && hud.multiplayerLobbyModal.activeSelf)
-                            || (hud.activeRoomModal != null && hud.activeRoomModal.activeSelf)))
+                        if (hud != null)
                         {
                             hud.LaunchMatchFromMenu(fromNetworkRpc: true);
                         }
@@ -679,22 +730,78 @@ namespace CSE377.Gameplay
 
         private void SendRawPacket(string packetType, string payloadStr)
         {
-            if (!isMultiplayerMode || !isRoomConnected || udpPeer == null) return;
+            if (!isMultiplayerMode || !isRoomConnected) return;
+            var pkt = new NetworkPacket
+            {
+                packetId = Guid.NewGuid().ToString("N").Substring(0, 12),
+                sentTicks = DateTime.UtcNow.Ticks,
+                appId = photonAppId,
+                room = matchRoomId,
+                senderName = localPlayerName,
+                senderInstanceId = clientInstanceId,
+                type = packetType,
+                team = assignedTeam.ToString(),
+                payload = payloadStr
+            };
+            processedPacketIds.Add(pkt.packetId);
+
+            // 1. Kanal: Düşük gecikmeli UDP Soketi
+            if (udpPeer != null)
+            {
+                try
+                {
+                    string json = JsonUtility.ToJson(pkt);
+                    byte[] bytes = Encoding.UTF8.GetBytes(json);
+                    udpPeer.Send(bytes, bytes.Length, "127.0.0.1", remotePort);
+                }
+                catch { }
+            }
+
+            // 2. Kanal: %100 Güvenilir Paylaşımlı Oda Paket Kuyruğu (Port çakışması veya UDP kaybında bile tüm emirlerin eksiksiz ulaşmasını garanti eder)
+            if (packetType != "HELLO")
+            {
+                try
+                {
+                    RoomPacketLogData log = new RoomPacketLogData();
+                    if (File.Exists(RoomPacketLogFilePath))
+                    {
+                        string raw = File.ReadAllText(RoomPacketLogFilePath, Encoding.UTF8);
+                        if (!string.IsNullOrWhiteSpace(raw))
+                        {
+                            log = JsonUtility.FromJson<RoomPacketLogData>(raw) ?? new RoomPacketLogData();
+                        }
+                    }
+                    long cutoffTicks = DateTime.UtcNow.Ticks - TimeSpan.FromSeconds(8.0).Ticks;
+                    log.packets.RemoveAll(p => p == null || p.sentTicks < cutoffTicks || (packetType == "TEAM_STATE_SYNC" && p.type == "TEAM_STATE_SYNC" && p.senderInstanceId == clientInstanceId));
+                    log.packets.Add(pkt);
+                    if (log.packets.Count > 45)
+                    {
+                        log.packets.RemoveRange(0, log.packets.Count - 45);
+                    }
+                    File.WriteAllText(RoomPacketLogFilePath, JsonUtility.ToJson(log), Encoding.UTF8);
+                }
+                catch { }
+            }
+        }
+
+        private void PollSharedRoomPackets()
+        {
             try
             {
-                var pkt = new NetworkPacket
+                if (!File.Exists(RoomPacketLogFilePath)) return;
+                string raw = File.ReadAllText(RoomPacketLogFilePath, Encoding.UTF8);
+                if (string.IsNullOrWhiteSpace(raw)) return;
+                var log = JsonUtility.FromJson<RoomPacketLogData>(raw);
+                if (log == null || log.packets == null) return;
+
+                for (int i = 0; i < log.packets.Count; i++)
                 {
-                    appId = photonAppId,
-                    room = matchRoomId,
-                    senderName = localPlayerName,
-                    senderInstanceId = clientInstanceId,
-                    type = packetType,
-                    team = assignedTeam.ToString(),
-                    payload = payloadStr
-                };
-                string json = JsonUtility.ToJson(pkt);
-                byte[] bytes = Encoding.UTF8.GetBytes(json);
-                udpPeer.Send(bytes, bytes.Length, "127.0.0.1", remotePort);
+                    var pkt = log.packets[i];
+                    if (pkt == null || pkt.room != matchRoomId) continue;
+                    if (!string.IsNullOrEmpty(pkt.senderInstanceId) && pkt.senderInstanceId == clientInstanceId) continue;
+                    if (!string.IsNullOrEmpty(pkt.packetId) && processedPacketIds.Contains(pkt.packetId)) continue;
+                    ProcessParsedPacket(pkt);
+                }
             }
             catch { }
         }
@@ -705,9 +812,23 @@ namespace CSE377.Gameplay
             try
             {
                 var pkt = JsonUtility.FromJson<NetworkPacket>(rawJson);
-                if (pkt == null || pkt.room != matchRoomId) return;
-                if (!string.IsNullOrEmpty(pkt.senderInstanceId) && pkt.senderInstanceId == clientInstanceId) return;
+                if (pkt == null) return;
+                ProcessParsedPacket(pkt);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[PHOTON RPC] Paket işleme uyarısı: {ex.Message}");
+            }
+        }
 
+        private void ProcessParsedPacket(NetworkPacket pkt)
+        {
+            if (pkt == null || pkt.room != matchRoomId) return;
+            if (!string.IsNullOrEmpty(pkt.senderInstanceId) && pkt.senderInstanceId == clientInstanceId) return;
+            if (!string.IsNullOrEmpty(pkt.packetId) && !processedPacketIds.Add(pkt.packetId)) return;
+
+            try
+            {
                 lastRemoteHeartbeatTime = Time.unscaledTime;
                 UnitTeam senderTeam = (pkt.team == "Enemy") ? UnitTeam.Enemy : UnitTeam.Player;
                 if (!string.IsNullOrEmpty(pkt.senderName))
@@ -930,31 +1051,191 @@ namespace CSE377.Gameplay
                         }
                     }
                 }
+                else if (pkt.type == "TEAM_STATE_SYNC" && !string.IsNullOrEmpty(pkt.payload))
+                {
+                    ApplyRemoteTeamLiveState(senderTeam, pkt.payload);
+                }
                 else if (pkt.type == "MAP_SYNC" && !string.IsNullOrEmpty(pkt.payload))
                 {
                     if (Enum.TryParse(pkt.payload, out RTSMapType syncedMap) && RTSAutoBootstrap.SelectedMap != syncedMap)
                     {
                         RTSAutoBootstrap.SelectedMap = syncedMap;
                         RTSHUDController.Instance?.UpdateMapSelectionUI();
-                        var hud = RTSHUDController.Instance;
-                        if (hud == null || hud.startScreenModal == null || !hud.startScreenModal.activeSelf)
-                        {
-                            RTSAutoBootstrap.Instance?.RebuildMapForSelectedType();
-                        }
                     }
                 }
                 else if (pkt.type == "MATCH_START")
                 {
-                    var hud = RTSHUDController.Instance;
-                    if (hud != null && ((hud.startScreenModal != null && hud.startScreenModal.activeSelf) || (hud.multiplayerLobbyModal != null && hud.multiplayerLobbyModal.activeSelf)))
+                    if (!string.IsNullOrEmpty(pkt.payload))
                     {
-                        hud.LaunchMatchFromMenu(fromNetworkRpc: true);
+                        string[] parts = pkt.payload.Split('|');
+                        if (parts.Length >= 1 && Enum.TryParse(parts[0], out RTSMapType startMap))
+                        {
+                            RTSAutoBootstrap.SelectedMap = startMap;
+                        }
+                        if (parts.Length >= 2 && int.TryParse(parts[1], out int seed) && seed != 0)
+                        {
+                            RTSAutoBootstrap.MatchRandomSeed = seed;
+                        }
+                    }
+                    if (!hasLaunchedCurrentRoomMatch)
+                    {
+                        hasLaunchedCurrentRoomMatch = true;
+                        RTSHUDController.Instance?.LaunchMatchFromMenu(fromNetworkRpc: true);
                     }
                 }
             }
             catch (Exception ex)
             {
                 Debug.LogWarning($"[PHOTON RPC] Paket işleme uyarısı: {ex.Message}");
+            }
+        }
+
+        private void BroadcastTeamLiveState()
+        {
+            if (!isMultiplayerMode || !isRoomConnected || !hasLaunchedCurrentRoomMatch) return;
+
+            var sb = new StringBuilder();
+            bool anyUnit = false;
+            foreach (var u in RTSUnit.AllUnits)
+            {
+                if (u == null || u.currentHp <= 0 || u.team != assignedTeam) continue;
+                if (anyUnit) sb.Append(';');
+                sb.AppendFormat(CultureInfo.InvariantCulture, "{0},{1:F2},{2:F2},{3:F1},{4},{5},{6:F2},{7:F2}",
+                    u.unitType.ToLowerInvariant(),
+                    u.transform.position.x,
+                    u.transform.position.z,
+                    u.transform.eulerAngles.y,
+                    u.currentHp,
+                    u.isMoving ? 1 : 0,
+                    u.commandDestination.x,
+                    u.commandDestination.z);
+                anyUnit = true;
+            }
+
+            sb.Append('|');
+            bool anyBld = false;
+            foreach (var b in RTSBuilding.AllBuildings)
+            {
+                if (b == null || b.currentHp <= 0 || b.team != assignedTeam) continue;
+                if (anyBld) sb.Append(';');
+                sb.AppendFormat(CultureInfo.InvariantCulture, "{0},{1:F2},{2:F2},{3},{4},{5:F1}",
+                    b.buildingType,
+                    b.transform.position.x,
+                    b.transform.position.z,
+                    b.currentHp,
+                    b.isConstructed ? 1 : 0,
+                    b.constructionProgress);
+                anyBld = true;
+            }
+
+            SendRawPacket("TEAM_STATE_SYNC", sb.ToString());
+        }
+
+        private void ApplyRemoteTeamLiveState(UnitTeam remoteTeam, string payload)
+        {
+            if (!hasLaunchedCurrentRoomMatch || string.IsNullOrEmpty(payload)) return;
+            string[] sections = payload.Split('|');
+
+            // 1. Karşı takımın canlı birim konumlarını, hareket hedeflerini ve canlarını eşitle
+            if (sections.Length >= 1 && !string.IsNullOrWhiteSpace(sections[0]))
+            {
+                var usedUnits = new HashSet<RTSUnit>();
+                string[] unitEntries = sections[0].Split(';');
+                foreach (string entry in unitEntries)
+                {
+                    if (string.IsNullOrWhiteSpace(entry)) continue;
+                    string[] f = entry.Split(',');
+                    if (f.Length >= 8)
+                    {
+                        string uType = f[0].ToLowerInvariant();
+                        float px = float.Parse(f[1], CultureInfo.InvariantCulture);
+                        float pz = float.Parse(f[2], CultureInfo.InvariantCulture);
+                        float rotY = float.Parse(f[3], CultureInfo.InvariantCulture);
+                        int hp = int.Parse(f[4], CultureInfo.InvariantCulture);
+                        bool isMov = f[5] == "1";
+                        float dx = float.Parse(f[6], CultureInfo.InvariantCulture);
+                        float dz = float.Parse(f[7], CultureInfo.InvariantCulture);
+
+                        Vector3 targetWorldPos = new Vector3(px, 0.1f, pz);
+                        RTSUnit match = FindClosestTeamUnit(remoteTeam, uType, targetWorldPos, usedUnits);
+                        if (match != null)
+                        {
+                            usedUnits.Add(match);
+                            if (hp < match.currentHp)
+                            {
+                                match.currentHp = hp;
+                            }
+
+                            Vector3 destPos = new Vector3(dx, 0.1f, dz);
+                            if (isMov && (!match.isMoving || Vector3.Distance(new Vector3(match.commandDestination.x, 0f, match.commandDestination.z), new Vector3(dx, 0f, dz)) > 1.2f))
+                            {
+                                match.MoveTo(destPos, isManual: false);
+                            }
+
+                            float posDiff = Vector2.Distance(new Vector2(match.transform.position.x, match.transform.position.z), new Vector2(px, pz));
+                            if (posDiff > 2.2f)
+                            {
+                                match.transform.position = new Vector3(px, match.transform.position.y, pz);
+                            }
+                            else if (posDiff > 0.15f && !isMov)
+                            {
+                                match.transform.position = Vector3.Lerp(match.transform.position, new Vector3(px, match.transform.position.y, pz), 0.6f);
+                                match.transform.rotation = Quaternion.Euler(0f, rotY, 0f);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. Karşı takımın binalarının inşaat ilerlemesini ve can değerlerini eşitle
+            if (sections.Length >= 2 && !string.IsNullOrWhiteSpace(sections[1]))
+            {
+                var usedBlds = new HashSet<RTSBuilding>();
+                string[] bldEntries = sections[1].Split(';');
+                foreach (string entry in bldEntries)
+                {
+                    if (string.IsNullOrWhiteSpace(entry)) continue;
+                    string[] f = entry.Split(',');
+                    if (f.Length >= 6 && Enum.TryParse(f[0], out RTSBuildingType bType))
+                    {
+                        float bx = float.Parse(f[1], CultureInfo.InvariantCulture);
+                        float bz = float.Parse(f[2], CultureInfo.InvariantCulture);
+                        int hp = int.Parse(f[3], CultureInfo.InvariantCulture);
+                        bool isConst = f[4] == "1";
+                        float prog = float.Parse(f[5], CultureInfo.InvariantCulture);
+
+                        RTSBuilding bestBld = null;
+                        float bestD = 10f;
+                        foreach (var b in RTSBuilding.AllBuildings)
+                        {
+                            if (b == null || b.currentHp <= 0 || b.team != remoteTeam || b.buildingType != bType || usedBlds.Contains(b)) continue;
+                            float d = Vector2.Distance(new Vector2(b.transform.position.x, b.transform.position.z), new Vector2(bx, bz));
+                            if (d < bestD)
+                            {
+                                bestD = d;
+                                bestBld = b;
+                            }
+                        }
+
+                        if (bestBld != null)
+                        {
+                            usedBlds.Add(bestBld);
+                            if (isConst && !bestBld.isConstructed)
+                            {
+                                bestBld.AddConstructionProgress(100f);
+                            }
+                            else if (!bestBld.isConstructed && prog > bestBld.constructionProgress)
+                            {
+                                bestBld.AddConstructionProgress(prog - bestBld.constructionProgress);
+                            }
+                            if (hp < bestBld.currentHp)
+                            {
+                                bestBld.currentHp = hp;
+                                bestBld.CheckDamageVisualState();
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -1093,11 +1374,12 @@ namespace CSE377.Gameplay
         }
 
         /// <summary>
-        /// Sefer başlatıldığında odadaki diğer oyuncunun da maça girmesini sağlar.
+        /// Sefer başlatıldığında odadaki diğer oyuncunun da birebir aynı harita ve deterministik tohum (Seed) ile maça girmesini sağlar.
         /// </summary>
         public void BroadcastMatchStart()
         {
             if (!isMultiplayerMode || !isRoomConnected) return;
+            hasLaunchedCurrentRoomMatch = true;
             try
             {
                 if (File.Exists(RegistryFilePath))
@@ -1107,13 +1389,16 @@ namespace CSE377.Gameplay
                     var r = reg?.rooms?.Find(x => x != null && string.Equals(x.roomName, matchRoomId, StringComparison.OrdinalIgnoreCase));
                     if (r != null)
                     {
+                        r.mapType = RTSAutoBootstrap.SelectedMap.ToString();
+                        r.matchSeed = RTSAutoBootstrap.MatchRandomSeed;
                         r.matchStarted = true;
+                        r.lastUpdatedTicks = DateTime.UtcNow.Ticks;
                         File.WriteAllText(RegistryFilePath, JsonUtility.ToJson(reg), Encoding.UTF8);
                     }
                 }
             }
             catch { }
-            SendRawPacket("MATCH_START", "1");
+            SendRawPacket("MATCH_START", $"{RTSAutoBootstrap.SelectedMap}|{RTSAutoBootstrap.MatchRandomSeed}");
         }
 
         /// <summary>

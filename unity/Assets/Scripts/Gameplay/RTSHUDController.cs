@@ -817,25 +817,38 @@ namespace CSE377.Gameplay
             var net = RTSNetworkSyncManager.Instance;
             if (!fromNetworkRpc && net != null && net.isMultiplayerMode && !net.CanStartMultiplayerMatch())
             {
-                SetAiStatus("⚠️ [ODA KİLİDİ] Odaya 2. oyuncu bağlanmadan Çok Oyunculu Sefer başlatılamaz!", new Color(1f, 0.45f, 0.35f));
+                string lockReason = (!net.isHost)
+                    ? "⚠️ [ODA KİLİDİ] Yalnızca odayı kuran oyuncu (1. Oyuncu / Kurucu) oyunu başlatabilir!"
+                    : "⚠️ [ODA KİLİDİ] Odaya 2. oyuncu bağlanmadan (2/2 olmadan) Çok Oyunculu Oyun başlatılamaz!";
+                SetAiStatus(lockReason, new Color(1f, 0.45f, 0.35f));
                 return;
             }
 
-            if (activeRoomModal != null) activeRoomModal.SetActive(false);
+            // Eğer Kurucu (Host) maçı başlatıyorsa ve "Rastgele Harita" seçiliyse, her iki oyuncunun da
+            // birebir aynı haritayı ve aynı ağaç/maden yerleşimini yüklemesi için önce haritayı ve deterministik tohumu (Seed) sabitle!
+            if (!fromNetworkRpc)
+            {
+                if (RTSAutoBootstrap.SelectedMap == RTSMapType.RandomMap)
+                {
+                    int r = UnityEngine.Random.Range(0, 4);
+                    RTSAutoBootstrap.SelectedMap = (r == 0) ? RTSMapType.RiverValley
+                        : (r == 1) ? RTSMapType.OpenSteppe
+                        : (r == 2) ? RTSMapType.BlackForest
+                        : RTSMapType.CrossCorners;
+                }
+                RTSAutoBootstrap.MatchRandomSeed = UnityEngine.Random.Range(100000, 999999);
+                RTSNetworkSyncManager.Instance?.BroadcastMapSelection(RTSAutoBootstrap.SelectedMap);
+                RTSNetworkSyncManager.Instance?.BroadcastMatchStart();
+            }
+
             if (activeRoomModal != null) activeRoomModal.SetActive(false);
             if (multiplayerLobbyModal != null) multiplayerLobbyModal.SetActive(false);
             if (startScreenModal != null) startScreenModal.SetActive(false);
             Time.timeScale = 1f;
 
-            // Haritayı ve oyuncu perspektifini (Mavi Güney / Kırmızı Kuzey) yalnızca maç başlarken oluştur (Menüdeyken arkaplan değişmez!)
+            // Haritayı ve oyuncu perspektifini (Mavi Güney / Kırmızı Kuzey) ortak deterministik tohumla oluştur
             RTSAutoBootstrap.Instance?.RebuildMapForSelectedType();
             RTSAutoBootstrap.Instance?.RefreshPerspectiveForLocalTeam();
-
-            if (!fromNetworkRpc)
-            {
-                RTSNetworkSyncManager.Instance?.BroadcastMapSelection(RTSAutoBootstrap.SelectedMap);
-                RTSNetworkSyncManager.Instance?.BroadcastMatchStart();
-            }
 
             gameManager?.StartMatch();
             RTSAudioManager.Instance?.PlaySound(RTSSoundType.WarHorn);
@@ -966,7 +979,12 @@ namespace CSE377.Gameplay
 
             if (activeRoomSimulatePlayerBtn != null)
             {
-                activeRoomSimulatePlayerBtn.gameObject.SetActive(!hasSecondPlayer);
+                activeRoomSimulatePlayerBtn.gameObject.SetActive(!hasSecondPlayer && (net == null || net.isHost));
+            }
+
+            if (mpLobbyMapBtn != null)
+            {
+                mpLobbyMapBtn.interactable = (net == null || !inRoom || net.isHost);
             }
 
             if (startScreenTeamBtnText != null)
@@ -978,20 +996,21 @@ namespace CSE377.Gameplay
                 else
                 {
                     startScreenTeamBtnText.text = (team == UnitTeam.Enemy)
-                        ? $"🔴 2. OYUNCU ({net.localPlayerName}): KIRMIZI KRALLIK + KIRMIZI AI KOMUTAN"
-                        : $"🔵 1. OYUNCU ({net.localPlayerName}): MAVİ KRALLIK + MAVİ AI KOMUTAN";
+                        ? $"🔴 SİZİN ROLÜNÜZ ({net.localPlayerName}): 2. OYUNCU — KIRMIZI KRALLIK + KIRMIZI AI KOMUTAN"
+                        : $"🔵 SİZİN ROLÜNÜZ ({net.localPlayerName}): 1. OYUNCU (KURUCU) — MAVİ KRALLIK + MAVİ AI KOMUTAN";
                 }
             }
 
             if (startScreenTeamBtn != null)
             {
-                startScreenTeamBtn.interactable = inRoom;
+                // Odadayken roller sabittir (1. Oyuncu Kurucu Mavi, 2. Oyuncu Katılımcı Kırmızı)
+                startScreenTeamBtn.interactable = false;
                 var img = startScreenTeamBtn.GetComponent<Image>();
                 if (img != null)
                 {
                     img.color = !inRoom
                         ? new Color(0.18f, 0.20f, 0.26f)
-                        : ((team == UnitTeam.Enemy) ? new Color(0.62f, 0.16f, 0.16f) : new Color(0.12f, 0.34f, 0.68f));
+                        : ((team == UnitTeam.Enemy) ? new Color(0.55f, 0.16f, 0.16f) : new Color(0.12f, 0.34f, 0.68f));
                 }
             }
 
@@ -1000,12 +1019,12 @@ namespace CSE377.Gameplay
                 startScreenRoomStatusText.text = (net != null)
                     ? net.roomStatusMessage
                     : "ℹ️ Odaya girmek için yeni bir oda açın veya açık odalardan birine katılın.";
-                startScreenRoomStatusText.color = (net != null && net.CanStartMultiplayerMatch())
+                startScreenRoomStatusText.color = (net != null && net.connectedPlayersCount >= 2)
                     ? new Color(0.45f, 1.0f, 0.55f)
                     : new Color(0.95f, 0.85f, 0.55f);
             }
 
-            // Odaya 2. oyuncu bağlanmadan Oyunu Başlat Butonunu kilitle!
+            // Yalnızca Odayı Kuran Oyuncu (isHost == true) ve 2/2 Hazır olduğunda Oyunu Başlat Butonu aktif olur!
             bool canStartMp = (net != null && net.CanStartMultiplayerMatch());
             if (mpLobbyStartMatchBtn != null)
             {
@@ -1026,6 +1045,13 @@ namespace CSE377.Gameplay
                     mpLobbyStartMatchBtnText.text = "🔒 ÖNCE ODA AÇIN VEYA KATILIN";
                     mpLobbyStartMatchBtnText.color = new Color(0.75f, 0.75f, 0.78f);
                 }
+                else if (net != null && !net.isHost)
+                {
+                    mpLobbyStartMatchBtnText.text = (net.connectedPlayersCount >= 2)
+                        ? $"⏳ KURUCUNUN ({p1Name}) BAŞLATMASI BEKLENİYOR (2/2)"
+                        : "⏳ KURUCU BEKLENİYOR (1/2)";
+                    mpLobbyStartMatchBtnText.color = new Color(0.85f, 0.92f, 1.0f);
+                }
                 else if (!canStartMp)
                 {
                     mpLobbyStartMatchBtnText.text = "⏳ RAKİP OYUNCU BEKLENİYOR (1/2)";
@@ -1041,6 +1067,11 @@ namespace CSE377.Gameplay
 
         public void CycleMapSelection()
         {
+            var net = RTSNetworkSyncManager.Instance;
+            if (net != null && net.isMultiplayerMode && net.isRoomConnected && !net.isHost)
+            {
+                return; // Çok oyunculu odada haritayı yalnızca odayı kuran oyuncu değiştirebilir
+            }
             switch (RTSAutoBootstrap.SelectedMap)
             {
                 case RTSMapType.RiverValley:
