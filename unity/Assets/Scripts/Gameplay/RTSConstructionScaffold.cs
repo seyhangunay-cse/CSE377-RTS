@@ -151,18 +151,16 @@ namespace CSE377.Gameplay
             if (building == null) return new Vector3(4f, 4f, 4f);
             switch (building.buildingType)
             {
-                case RTSBuildingType.TownCenter: return new Vector3(7.5f, 6.5f, 7.5f);
-                case RTSBuildingType.Castle: return new Vector3(9.0f, 9.0f, 9.0f);
-                case RTSBuildingType.Barracks: return new Vector3(5.5f, 4.5f, 5.5f);
-                case RTSBuildingType.ArcheryRange: return new Vector3(5.5f, 4.0f, 5.5f);
-                case RTSBuildingType.SiegeWorkshop: return new Vector3(6.0f, 4.5f, 6.0f);
-                case RTSBuildingType.Market: return new Vector3(5.5f, 4.0f, 5.5f);
-                case RTSBuildingType.Blacksmith: return new Vector3(5.0f, 4.0f, 5.0f);
-                case RTSBuildingType.DefenseTower: return new Vector3(3.2f, 7.5f, 3.2f);
-                case RTSBuildingType.House: return new Vector3(4.2f, 3.5f, 4.2f);
-                case RTSBuildingType.Farm: return new Vector3(5.0f, 1.5f, 5.0f);
-                case RTSBuildingType.StoneWall: return new Vector3(3.2f, 3.5f, 1.5f);
-                case RTSBuildingType.CityGate: return new Vector3(4.5f, 4.5f, 2.0f);
+                case RTSBuildingType.TownCenter: return new Vector3(7.6f, 6.8f, 7.6f);
+                case RTSBuildingType.Castle: return new Vector3(9.0f, 7.6f, 9.0f);
+                case RTSBuildingType.Barracks: return new Vector3(7.4f, 4.0f, 5.2f);
+                case RTSBuildingType.ArcheryRange: return new Vector3(7.4f, 3.8f, 5.2f);
+                case RTSBuildingType.SiegeWorkshop: return new Vector3(7.6f, 4.4f, 5.6f);
+                case RTSBuildingType.Market: return new Vector3(6.8f, 3.6f, 6.4f);
+                case RTSBuildingType.Blacksmith: return new Vector3(5.6f, 4.2f, 5.4f);
+                case RTSBuildingType.DefenseTower: return new Vector3(3.4f, 6.2f, 3.4f);
+                case RTSBuildingType.House: return new Vector3(4.3f, 3.8f, 4.3f);
+                case RTSBuildingType.Farm: return new Vector3(5.6f, 2.2f, 5.6f);
                 default: return new Vector3(4.5f, 4.0f, 4.5f);
             }
         }

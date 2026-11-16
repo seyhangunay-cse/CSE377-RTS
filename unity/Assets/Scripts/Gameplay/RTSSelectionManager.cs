@@ -26,6 +26,7 @@ namespace CSE377.Gameplay
         public bool isPlacingBuilding = false;
         private RTSBuildingType placingType;
         private GameObject placementGhost;
+        private bool placementGhostIsPrimitive = false;
         private float placingRotationY = 0f;
 
         [Header("Seçim Kutusu Görseli")]
@@ -75,84 +76,31 @@ namespace CSE377.Gameplay
             isPlacingBuilding = true;
             placingType = type;
             placingRotationY = 0f;
+            placementGhostIsPrimitive = false;
 
-            if (type == RTSBuildingType.DefenseTower)
+            var archPrefab = Resources.Load<GameObject>($"Models/Buildings/{type}");
+            if (archPrefab != null)
             {
-                var towerModel = Resources.Load<GameObject>("Models/tower-square") ?? Resources.Load<GameObject>("Models/Tower");
-                if (towerModel != null)
+                placementGhost = Instantiate(archPrefab);
+            }
+            else
+            {
+                placementGhostIsPrimitive = true;
+                placementGhost = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                switch (type)
                 {
-                    placementGhost = Instantiate(towerModel);
-                    placementGhost.transform.localScale = new Vector3(1.4f, 2.0f, 1.4f);
+                    case RTSBuildingType.TownCenter: placementGhost.transform.localScale = new Vector3(7.4f, 6.8f, 7.4f); break;
+                    case RTSBuildingType.Castle: placementGhost.transform.localScale = new Vector3(8.8f, 7.6f, 8.8f); break;
+                    case RTSBuildingType.Barracks: placementGhost.transform.localScale = new Vector3(7.2f, 3.9f, 5.0f); break;
+                    case RTSBuildingType.ArcheryRange: placementGhost.transform.localScale = new Vector3(7.2f, 3.6f, 5.0f); break;
+                    case RTSBuildingType.SiegeWorkshop: placementGhost.transform.localScale = new Vector3(7.4f, 4.3f, 5.4f); break;
+                    case RTSBuildingType.Market: placementGhost.transform.localScale = new Vector3(6.6f, 3.5f, 6.2f); break;
+                    case RTSBuildingType.Blacksmith: placementGhost.transform.localScale = new Vector3(5.4f, 4.2f, 5.2f); break;
+                    case RTSBuildingType.DefenseTower: placementGhost.transform.localScale = new Vector3(3.2f, 6.0f, 3.2f); break;
+                    case RTSBuildingType.House: placementGhost.transform.localScale = new Vector3(4.1f, 3.7f, 4.1f); break;
+                    case RTSBuildingType.Farm: placementGhost.transform.localScale = new Vector3(5.4f, 1.2f, 5.4f); break;
+                    default: placementGhost.transform.localScale = new Vector3(5.0f, 4.0f, 5.0f); break;
                 }
-                else
-                {
-                    placementGhost = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-                    placementGhost.transform.localScale = new Vector3(3.6f, 7.5f, 3.6f);
-                }
-            }
-            else if (type == RTSBuildingType.Blacksmith)
-            {
-                placementGhost = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                placementGhost.transform.localScale = new Vector3(5.2f, 4.8f, 5.2f);
-            }
-            else if (type == RTSBuildingType.House)
-            {
-                placementGhost = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                placementGhost.transform.localScale = new Vector3(4.2f, 4.0f, 4.2f);
-            }
-            else if (type == RTSBuildingType.Farm)
-            {
-                placementGhost = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                placementGhost.transform.localScale = new Vector3(5.2f, 0.4f, 5.2f);
-            }
-            else if (type == RTSBuildingType.TownCenter)
-            {
-                placementGhost = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                placementGhost.transform.localScale = new Vector3(7.2f, 8.5f, 7.2f);
-            }
-            else if (type == RTSBuildingType.StoneWall)
-            {
-                placementGhost = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                placementGhost.transform.localScale = new Vector3(4.0f, 2.4f, 1.4f);
-            }
-            else if (type == RTSBuildingType.CityGate)
-            {
-                placementGhost = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                placementGhost.transform.localScale = new Vector3(6.0f, 3.2f, 1.8f);
-            }
-            else if (type == RTSBuildingType.Castle)
-            {
-                var castleModel = Resources.Load<GameObject>("Models/CastleBase");
-                if (castleModel != null)
-                {
-                    placementGhost = Instantiate(castleModel);
-                    placementGhost.transform.localScale = new Vector3(2.8f, 2.2f, 2.8f);
-                }
-                else
-                {
-                    placementGhost = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                    placementGhost.transform.localScale = new Vector3(9.2f, 9.5f, 9.2f);
-                }
-            }
-            else if (type == RTSBuildingType.ArcheryRange)
-            {
-                placementGhost = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                placementGhost.transform.localScale = new Vector3(8.0f, 4.5f, 5.5f);
-            }
-            else if (type == RTSBuildingType.SiegeWorkshop)
-            {
-                placementGhost = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                placementGhost.transform.localScale = new Vector3(8.5f, 5.0f, 6.0f);
-            }
-            else if (type == RTSBuildingType.Market)
-            {
-                placementGhost = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                placementGhost.transform.localScale = new Vector3(6.5f, 4.2f, 6.0f);
-            }
-            else // Barracks
-            {
-                placementGhost = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                placementGhost.transform.localScale = new Vector3(6.0f, 5.5f, 6.0f);
             }
 
             placementGhost.name = "Placement_Ghost";
@@ -161,10 +109,35 @@ namespace CSE377.Gameplay
                 Destroy(col);
             }
 
-            // Yarı saydam yeşil malzeme
-            foreach (var ren in placementGhost.GetComponentsInChildren<Renderer>())
+            // Yarı saydam hayalet malzeme (bina siluetini net gösterir)
+            var ghostShader = Shader.Find("Standard") ?? Shader.Find("Diffuse");
+            var ghostMat = new Material(ghostShader);
+            ghostMat.color = new Color(0.25f, 0.95f, 0.42f, 0.48f);
+            if (ghostShader != null && ghostShader.name == "Standard")
             {
-                ren.material.color = new Color(0.2f, 1f, 0.3f, 0.55f);
+                ghostMat.SetFloat("_Mode", 3);
+                ghostMat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                ghostMat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                ghostMat.SetInt("_ZWrite", 0);
+                ghostMat.DisableKeyword("_ALPHATEST_ON");
+                ghostMat.EnableKeyword("_ALPHABLEND_ON");
+                ghostMat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+                ghostMat.renderQueue = 3000;
+            }
+            foreach (var ren in placementGhost.GetComponentsInChildren<Renderer>(true))
+            {
+                if (ren == null) continue;
+                var shared = ren.sharedMaterials;
+                if (shared == null || shared.Length <= 1)
+                {
+                    ren.sharedMaterial = ghostMat;
+                }
+                else
+                {
+                    var mats = new Material[shared.Length];
+                    for (int i = 0; i < mats.Length; i++) mats[i] = ghostMat;
+                    ren.sharedMaterials = mats;
+                }
             }
 
             GetBuildingPlacementInfo(type, out string bName, out string bCost, out string bDesc);
@@ -354,7 +327,8 @@ namespace CSE377.Gameplay
 
                 if (placementGhost != null)
                 {
-                    placementGhost.transform.position = clampedPlacePos + Vector3.up * 1f;
+                    float yOff = placementGhostIsPrimitive ? (placementGhost.transform.localScale.y * 0.5f) : 0.04f;
+                    placementGhost.transform.position = clampedPlacePos + Vector3.up * yOff;
                     placementGhost.transform.rotation = Quaternion.Euler(0f, placingRotationY, 0f);
                 }
 
@@ -404,12 +378,13 @@ namespace CSE377.Gameplay
 
                 if (placementGhost != null)
                 {
-                    var ghostRen = placementGhost.GetComponent<Renderer>();
-                    if (ghostRen != null)
+                    Color ghostCol = isBlockedByObject
+                        ? new Color(1.0f, 0.22f, 0.22f, 0.58f)
+                        : new Color(0.25f, 0.95f, 0.42f, 0.48f);
+                    var firstRen = placementGhost.GetComponentInChildren<Renderer>(true);
+                    if (firstRen != null && firstRen.sharedMaterial != null)
                     {
-                        ghostRen.material.color = isBlockedByObject
-                            ? new Color(1.0f, 0.2f, 0.2f, 0.65f)
-                            : new Color(0.2f, 1.0f, 0.4f, 0.55f);
+                        firstRen.sharedMaterial.color = ghostCol;
                     }
                 }
 

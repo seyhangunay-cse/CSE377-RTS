@@ -291,16 +291,16 @@ namespace CSE377.Gameplay
         {
             switch (buildingType)
             {
-                case RTSBuildingType.TownCenter: return new Vector3(7f, 5f, 7f);
-                case RTSBuildingType.Castle: return new Vector3(8.5f, 8f, 8.5f);
-                case RTSBuildingType.Barracks: return new Vector3(5f, 4f, 5f);
-                case RTSBuildingType.ArcheryRange: return new Vector3(5f, 3.5f, 5f);
-                case RTSBuildingType.SiegeWorkshop: return new Vector3(5.5f, 4f, 5.5f);
-                case RTSBuildingType.Market: return new Vector3(5f, 3.5f, 5f);
-                case RTSBuildingType.Blacksmith: return new Vector3(4.5f, 3.5f, 4.5f);
-                case RTSBuildingType.DefenseTower: return new Vector3(3f, 6.5f, 3f);
-                case RTSBuildingType.House: return new Vector3(3.8f, 3f, 3.8f);
-                case RTSBuildingType.Farm: return new Vector3(4.5f, 1f, 4.5f);
+                case RTSBuildingType.TownCenter: return new Vector3(7.4f, 6.8f, 7.4f);
+                case RTSBuildingType.Castle: return new Vector3(8.8f, 7.6f, 8.8f);
+                case RTSBuildingType.Barracks: return new Vector3(7.2f, 3.9f, 5.0f);
+                case RTSBuildingType.ArcheryRange: return new Vector3(7.2f, 3.6f, 5.0f);
+                case RTSBuildingType.SiegeWorkshop: return new Vector3(7.4f, 4.3f, 5.4f);
+                case RTSBuildingType.Market: return new Vector3(6.6f, 3.5f, 6.2f);
+                case RTSBuildingType.Blacksmith: return new Vector3(5.4f, 4.2f, 5.2f);
+                case RTSBuildingType.DefenseTower: return new Vector3(3.2f, 6.0f, 3.2f);
+                case RTSBuildingType.House: return new Vector3(4.1f, 3.7f, 4.1f);
+                case RTSBuildingType.Farm: return new Vector3(5.4f, 2.3f, 5.4f);
                 default: return new Vector3(4f, 3f, 4f);
             }
         }
@@ -373,7 +373,7 @@ namespace CSE377.Gameplay
                 if (nearestEnemy != null)
                 {
                     nextAttackTime = Time.time + attackCooldown;
-                    Vector3 shootPos = transform.position + Vector3.up * 6.0f;
+                    Vector3 shootPos = transform.position + Vector3.up * 5.2f;
                     RTSProjectile.FireArrow(shootPos, nearestEnemy, towerDamage + bonusDmg, null, this.team);
                     RTSAudioManager.Instance?.PlaySound(RTSSoundType.ArrowShoot);
                 }
@@ -597,6 +597,219 @@ namespace CSE377.Gameplay
                     }
                 }
             }
+        }
+
+        private static readonly Dictionary<string, Material> archMaterialCache = new Dictionary<string, Material>();
+
+        private static string ResolveArchMaterialKey(string rawName)
+        {
+            if (string.IsNullOrEmpty(rawName)) return "stone";
+            string s = rawName.ToLowerInvariant();
+            if (s.Contains("dark_stone")) return "dark_stone";
+            if (s.Contains("window_glow")) return "window_glow";
+            if (s.Contains("fabric_team")) return "fabric_team";
+            if (s.Contains("banner_team")) return "banner_team";
+            if (s.Contains("roof_team")) return "roof_team";
+            if (s.Contains("roof_cedar")) return "roof_cedar";
+            if (s.Contains("cobble")) return "cobble";
+            if (s.Contains("timber")) return "timber";
+            if (s.Contains("plaster")) return "plaster";
+            if (s.Contains("iron")) return "iron";
+            if (s.Contains("soil")) return "soil";
+            if (s.Contains("wheat")) return "wheat";
+            if (s.Contains("straw")) return "straw";
+            if (s.Contains("target")) return "target";
+            if (s.Contains("ember")) return "ember";
+            if (s.Contains("stone")) return "stone";
+            return "stone";
+        }
+
+        private static Material GetArchitecturalMaterial(string matKey, UnitTeam team)
+        {
+            string cacheKey = $"{team}_{matKey}";
+            if (archMaterialCache.TryGetValue(cacheKey, out var cached) && cached != null)
+            {
+                return cached;
+            }
+
+            var shader = Shader.Find("Standard") ?? Shader.Find("Diffuse");
+            var mat = new Material(shader)
+            {
+                name = $"Mat_Arch_{cacheKey}",
+                color = Color.white
+            };
+
+            string albedoPath = null;
+            string normalPath = null;
+            float metallic = 0.0f;
+            float smoothness = 0.20f;
+            Color tint = Color.white;
+            Color emission = Color.black;
+
+            switch (matKey)
+            {
+                case "dark_stone":
+                    albedoPath = "Textures/Buildings/stone_dark_albedo";
+                    normalPath = "Textures/Buildings/stone_dark_normal";
+                    smoothness = 0.22f;
+                    break;
+                case "stone":
+                    albedoPath = "Textures/Buildings/stone_ashlar_albedo";
+                    normalPath = "Textures/Buildings/stone_ashlar_normal";
+                    smoothness = 0.24f;
+                    break;
+                case "cobble":
+                    albedoPath = "Textures/Buildings/courtyard_cobble_albedo";
+                    normalPath = "Textures/Buildings/courtyard_cobble_normal";
+                    smoothness = 0.16f;
+                    break;
+                case "timber":
+                    albedoPath = "Textures/Buildings/timber_oak_albedo";
+                    normalPath = "Textures/Buildings/timber_oak_normal";
+                    smoothness = 0.22f;
+                    break;
+                case "plaster":
+                    albedoPath = "Textures/Buildings/plaster_tudor_albedo";
+                    normalPath = "Textures/Buildings/plaster_tudor_normal";
+                    smoothness = 0.10f;
+                    break;
+                case "roof_team":
+                    albedoPath = "Textures/Buildings/roof_slate_albedo";
+                    normalPath = "Textures/Buildings/roof_slate_normal";
+                    smoothness = 0.28f;
+                    tint = (team == UnitTeam.Player)
+                        ? new Color(0.28f, 0.48f, 0.84f)  // Kraliyet Arduvaz Mavisi
+                        : new Color(0.76f, 0.24f, 0.22f); // Kızıl Kiremit Kırmızısı
+                    break;
+                case "roof_cedar":
+                    albedoPath = "Textures/Buildings/roof_cedar_albedo";
+                    normalPath = "Textures/Buildings/roof_cedar_normal";
+                    smoothness = 0.20f;
+                    break;
+                case "iron":
+                    albedoPath = "Textures/Buildings/wrought_iron_albedo";
+                    normalPath = "Textures/Buildings/wrought_iron_normal";
+                    metallic = 0.78f;
+                    smoothness = 0.52f;
+                    break;
+                case "soil":
+                    albedoPath = "Textures/Buildings/farm_soil_albedo";
+                    normalPath = "Textures/Buildings/farm_soil_normal";
+                    smoothness = 0.08f;
+                    break;
+                case "wheat":
+                    albedoPath = "Textures/Buildings/farm_wheat_albedo";
+                    normalPath = "Textures/Buildings/farm_wheat_normal";
+                    smoothness = 0.14f;
+                    break;
+                case "straw":
+                    albedoPath = "Textures/Buildings/straw_thatch_albedo";
+                    normalPath = "Textures/Buildings/straw_thatch_normal";
+                    smoothness = 0.10f;
+                    break;
+                case "target":
+                    albedoPath = "Textures/Buildings/archery_target_albedo";
+                    normalPath = "Textures/Buildings/straw_thatch_normal";
+                    smoothness = 0.14f;
+                    break;
+                case "fabric_team":
+                    albedoPath = (team == UnitTeam.Player)
+                        ? "Textures/Buildings/fabric_awning_blue_albedo"
+                        : "Textures/Buildings/fabric_awning_red_albedo";
+                    smoothness = 0.10f;
+                    break;
+                case "banner_team":
+                    tint = (team == UnitTeam.Player)
+                        ? new Color(0.14f, 0.44f, 0.92f)
+                        : new Color(0.86f, 0.18f, 0.18f);
+                    smoothness = 0.18f;
+                    break;
+                case "window_glow":
+                    albedoPath = "Textures/Buildings/window_glow_albedo";
+                    smoothness = 0.45f;
+                    emission = new Color(1.0f, 0.72f, 0.28f) * 0.75f;
+                    break;
+                case "ember":
+                    albedoPath = "Textures/Buildings/forge_ember_albedo";
+                    smoothness = 0.15f;
+                    emission = new Color(1.0f, 0.42f, 0.06f) * 2.4f;
+                    break;
+            }
+
+            if (!string.IsNullOrEmpty(albedoPath))
+            {
+                var tex = Resources.Load<Texture2D>(albedoPath);
+                if (tex != null) mat.mainTexture = tex;
+            }
+            mat.color = tint;
+
+            if (shader != null && shader.name == "Standard")
+            {
+                mat.SetFloat("_Metallic", metallic);
+                mat.SetFloat("_Glossiness", smoothness);
+
+                if (!string.IsNullOrEmpty(normalPath))
+                {
+                    var nTex = Resources.Load<Texture2D>(normalPath);
+                    if (nTex != null)
+                    {
+                        mat.EnableKeyword("_NORMALMAP");
+                        mat.SetTexture("_BumpMap", nTex);
+                        mat.SetFloat("_BumpScale", 0.75f);
+                    }
+                }
+
+                if (emission != Color.black && mat.HasProperty("_EmissionColor"))
+                {
+                    mat.EnableKeyword("_EMISSION");
+                    mat.SetColor("_EmissionColor", emission);
+                }
+            }
+
+            archMaterialCache[cacheKey] = mat;
+            return mat;
+        }
+
+        private static bool InstantiateArchitecturalBuilding(RTSBuildingType type, Transform parent, UnitTeam team)
+        {
+            GameObject prefab = Resources.Load<GameObject>($"Models/Buildings/{type}");
+            if (prefab == null) return false;
+
+            GameObject model = Instantiate(prefab, parent);
+            model.name = $"ArchModel_{type}";
+            model.transform.localPosition = Vector3.zero;
+            model.transform.localRotation = Quaternion.identity;
+            model.transform.localScale = Vector3.one;
+
+            foreach (var col in model.GetComponentsInChildren<Collider>(true))
+            {
+                DestroyImmediate(col);
+            }
+
+            foreach (var ren in model.GetComponentsInChildren<Renderer>(true))
+            {
+                if (ren == null) continue;
+                var shared = ren.sharedMaterials;
+                if (shared == null || shared.Length <= 1)
+                {
+                    string srcName = (shared != null && shared.Length == 1 && shared[0] != null)
+                        ? $"{ren.gameObject.name}_{shared[0].name}"
+                        : ren.gameObject.name;
+                    ren.sharedMaterial = GetArchitecturalMaterial(ResolveArchMaterialKey(srcName), team);
+                }
+                else
+                {
+                    Material[] mats = new Material[shared.Length];
+                    for (int i = 0; i < shared.Length; i++)
+                    {
+                        string slotName = (shared[i] != null) ? shared[i].name : ren.gameObject.name;
+                        mats[i] = GetArchitecturalMaterial(ResolveArchMaterialKey(slotName), team);
+                    }
+                    ren.sharedMaterials = mats;
+                }
+            }
+
+            return true;
         }
 
         private static void ConstructTownCenter3D(Transform parent, UnitTeam team)
@@ -1162,79 +1375,80 @@ namespace CSE377.Gameplay
             vGo.transform.SetParent(bGo.transform, false);
 
             BoxCollider rootBox = bGo.AddComponent<BoxCollider>();
+            bool usedArchModel = InstantiateArchitecturalBuilding(type, vGo.transform, team);
 
             switch (type)
             {
                 case RTSBuildingType.TownCenter:
-                    ConstructTownCenter3D(vGo.transform, team);
-                    rootBox.size = new Vector3(6.8f, 7.0f, 6.8f);
-                    rootBox.center = new Vector3(0, 3.5f, 0);
+                    if (!usedArchModel) ConstructTownCenter3D(vGo.transform, team);
+                    rootBox.size = new Vector3(7.4f, 6.8f, 7.4f);
+                    rootBox.center = new Vector3(0, 3.4f, 0);
                     break;
 
                 case RTSBuildingType.Barracks:
-                    ConstructBarracks3D(vGo.transform, team);
-                    rootBox.size = new Vector3(7.5f, 3.6f, 4.5f);
-                    rootBox.center = new Vector3(0.5f, 1.8f, 0);
+                    if (!usedArchModel) ConstructBarracks3D(vGo.transform, team);
+                    rootBox.size = new Vector3(7.2f, 3.9f, 5.0f);
+                    rootBox.center = new Vector3(0, 1.95f, 0);
                     break;
 
                 case RTSBuildingType.Blacksmith:
-                    ConstructBlacksmith3D(vGo.transform, team);
-                    rootBox.size = new Vector3(5.5f, 4.5f, 5.5f);
-                    rootBox.center = new Vector3(0, 2.25f, 0);
+                    if (!usedArchModel) ConstructBlacksmith3D(vGo.transform, team);
+                    rootBox.size = new Vector3(5.4f, 4.2f, 5.2f);
+                    rootBox.center = new Vector3(0, 2.1f, 0);
                     break;
 
                 case RTSBuildingType.House:
-                    ConstructHouse3D(vGo.transform, team);
-                    rootBox.size = new Vector3(4.2f, 3.2f, 4.2f);
-                    rootBox.center = new Vector3(0.4f, 1.6f, 0);
+                    if (!usedArchModel) ConstructHouse3D(vGo.transform, team);
+                    rootBox.size = new Vector3(4.1f, 3.7f, 4.1f);
+                    rootBox.center = new Vector3(0, 1.85f, 0);
                     break;
 
                 case RTSBuildingType.Farm:
-                    ConstructFarm3D(vGo.transform, team);
-                    rootBox.size = new Vector3(5.4f, 2.0f, 5.4f);
-                    rootBox.center = new Vector3(0, 1.0f, 0);
+                    if (!usedArchModel) ConstructFarm3D(vGo.transform, team);
+                    rootBox.size = new Vector3(5.4f, 2.3f, 5.4f);
+                    rootBox.center = new Vector3(0, 1.15f, 0);
                     break;
 
                 case RTSBuildingType.DefenseTower:
-                    ConstructDefenseTower3D(vGo.transform, team);
-                    rootBox.size = new Vector3(2.4f, 4.5f, 2.4f);
-                    rootBox.center = new Vector3(0, 2.25f, 0);
+                    if (!usedArchModel) ConstructDefenseTower3D(vGo.transform, team);
+                    rootBox.size = new Vector3(3.2f, 6.0f, 3.2f);
+                    rootBox.center = new Vector3(0, 3.0f, 0);
                     break;
 
                 case RTSBuildingType.StoneWall:
-                    ConstructStoneWall3D(vGo.transform, team);
+                    if (!usedArchModel) ConstructStoneWall3D(vGo.transform, team);
                     rootBox.size = new Vector3(4.0f, 2.4f, 1.4f);
                     rootBox.center = new Vector3(0, 1.2f, 0);
                     break;
 
                 case RTSBuildingType.CityGate:
-                    ConstructCityGate3D(vGo.transform, team);
+                    if (!usedArchModel) ConstructCityGate3D(vGo.transform, team);
                     rootBox.size = new Vector3(6.0f, 3.2f, 1.8f);
                     rootBox.center = new Vector3(0, 1.6f, 0);
                     break;
 
                 case RTSBuildingType.Castle:
-                    ConstructCastle3D(vGo.transform, team);
-                    rootBox.size = new Vector3(8.5f, 7.5f, 8.5f);
-                    rootBox.center = new Vector3(0, 3.75f, 0);
+                    if (!usedArchModel) ConstructCastle3D(vGo.transform, team);
+                    rootBox.size = new Vector3(8.8f, 7.6f, 8.8f);
+                    rootBox.center = new Vector3(0, 3.8f, 0);
                     break;
 
                 case RTSBuildingType.ArcheryRange:
-                    ConstructArcheryRange3D(vGo.transform, team);
-                    rootBox.size = new Vector3(7.5f, 3.6f, 4.5f);
-                    rootBox.center = new Vector3(0.5f, 1.8f, 0);
+                    if (!usedArchModel) ConstructArcheryRange3D(vGo.transform, team);
+                    rootBox.size = new Vector3(7.2f, 3.6f, 5.0f);
+                    rootBox.center = new Vector3(0, 1.8f, 0);
                     break;
 
                 case RTSBuildingType.SiegeWorkshop:
-                    ConstructSiegeWorkshop3D(vGo.transform, team);
-                    rootBox.size = new Vector3(7.5f, 3.8f, 5.0f);
-                    rootBox.center = new Vector3(0, 1.9f, 0);
+                    if (!usedArchModel) ConstructSiegeWorkshop3D(vGo.transform, team);
+                    rootBox.size = new Vector3(7.4f, 4.3f, 5.4f);
+                    rootBox.center = new Vector3(0, 2.15f, 0);
                     break;
 
                 case RTSBuildingType.Market:
-                    ConstructMarket3D(vGo.transform, team);
-                    rootBox.size = new Vector3(6.5f, 4.2f, 6.0f);
-                    rootBox.center = new Vector3(0, 2.1f, 0);
+                    if (!usedArchModel) ConstructMarket3D(vGo.transform, team);
+                    rootBox.size = new Vector3(6.6f, 3.5f, 6.2f);
+                    rootBox.center = new Vector3(0, 1.75f, 0);
                     break;
             }
 
@@ -1249,8 +1463,11 @@ namespace CSE377.Gameplay
                 if (fbCol != null) DestroyImmediate(fbCol);
             }
 
-            // Takım dokusunu ve renklerini tüm görsel parçalara uygula
-            ApplyTeamStyling(vGo.transform, team);
+            // Eski modüler fallback kullanıldıysa Kenney takım stilini uygula
+            if (!usedArchModel)
+            {
+                ApplyTeamStyling(vGo.transform, team);
+            }
 
             var building = bGo.AddComponent<RTSBuilding>();
             building.buildingType = type;
@@ -1360,39 +1577,51 @@ namespace CSE377.Gameplay
             // Dalgalanan Hanedanlık Sancakları ve Atmosferik Meşaleler (Medieval Atmosphere)
             if (type == RTSBuildingType.TownCenter)
             {
-                RTSBuildingBanner.AttachBanner(building, new Vector3(0, 6.45f, 0), height: 2.8f, width: 2.0f);
-                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3(-1.2f, 1.6f, -1.6f), new Color(1.0f, 0.75f, 0.35f), range: 7.5f, intensity: 1.25f);
-                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3( 1.2f, 1.6f, -1.6f), new Color(1.0f, 0.75f, 0.35f), range: 7.5f, intensity: 1.25f);
+                RTSBuildingBanner.AttachBanner(building, new Vector3(0, 6.80f, 0.20f), height: 2.8f, width: 2.0f);
+                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3(-1.15f, 1.8f, -2.55f), new Color(1.0f, 0.75f, 0.35f), range: 7.5f, intensity: 1.25f);
+                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3( 1.15f, 1.8f, -2.55f), new Color(1.0f, 0.75f, 0.35f), range: 7.5f, intensity: 1.25f);
             }
             else if (type == RTSBuildingType.Castle)
             {
-                RTSBuildingBanner.AttachBanner(building, new Vector3(0, 6.45f, 0), height: 3.0f, width: 2.2f);
-                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3(-1.8f, 2.0f, -2.0f), new Color(1.0f, 0.72f, 0.30f), range: 8f, intensity: 1.4f);
-                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3( 1.8f, 2.0f, -2.0f), new Color(1.0f, 0.72f, 0.30f), range: 8f, intensity: 1.4f);
+                RTSBuildingBanner.AttachBanner(building, new Vector3(0, 7.60f, 0.30f), height: 3.0f, width: 2.2f);
+                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3(-1.10f, 2.2f, -4.25f), new Color(1.0f, 0.72f, 0.30f), range: 8f, intensity: 1.4f);
+                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3( 1.10f, 2.2f, -4.25f), new Color(1.0f, 0.72f, 0.30f), range: 8f, intensity: 1.4f);
             }
             else if (type == RTSBuildingType.Barracks)
             {
-                RTSBuildingBanner.AttachBanner(building, new Vector3(-0.6f, 2.62f, 0), height: 2.2f, width: 1.5f);
-                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3(1.6f, 1.8f, -1.8f), new Color(1.0f, 0.70f, 0.30f), range: 6.5f, intensity: 1.15f);
+                float bx = usedArchModel ? 0.95f : -0.95f;
+                RTSBuildingBanner.AttachBanner(building, new Vector3(bx, 3.85f, 0.35f), height: 2.2f, width: 1.5f);
+                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3(bx, 1.8f, -1.60f), new Color(1.0f, 0.70f, 0.30f), range: 6.5f, intensity: 1.15f);
             }
             else if (type == RTSBuildingType.DefenseTower)
             {
-                RTSBuildingBanner.AttachBanner(building, new Vector3(0, 4.15f, 0), height: 2.4f, width: 1.5f);
-                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3(0, 3.8f, -0.9f), new Color(1.0f, 0.80f, 0.35f), range: 9f, intensity: 1.5f);
+                RTSBuildingBanner.AttachBanner(building, new Vector3(0, 6.05f, 0), height: 2.4f, width: 1.5f);
+                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3(0, 4.9f, -1.45f), new Color(1.0f, 0.80f, 0.35f), range: 9f, intensity: 1.5f);
             }
             else if (type == RTSBuildingType.ArcheryRange)
             {
-                RTSBuildingBanner.AttachBanner(building, new Vector3(-1.6f, 2.62f, 0), height: 2.2f, width: 1.5f);
-                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3(-1.4f, 1.5f, -1.5f), new Color(1.0f, 0.75f, 0.32f), range: 6f, intensity: 1.1f);
+                float ax = usedArchModel ? 1.85f : -1.85f;
+                RTSBuildingBanner.AttachBanner(building, new Vector3(ax, 3.40f, 0), height: 2.2f, width: 1.5f);
+                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3(ax, 1.6f, -2.15f), new Color(1.0f, 0.75f, 0.32f), range: 6f, intensity: 1.1f);
             }
             else if (type == RTSBuildingType.SiegeWorkshop)
             {
-                RTSBuildingBanner.AttachBanner(building, new Vector3(-1.8f, 2.92f, 0), height: 2.2f, width: 1.5f);
-                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3(1.5f, 1.6f, -1.8f), new Color(1.0f, 0.65f, 0.25f), range: 6.5f, intensity: 1.2f);
+                float sx = usedArchModel ? 1.55f : -1.55f;
+                RTSBuildingBanner.AttachBanner(building, new Vector3(sx, 4.25f, 0.20f), height: 2.2f, width: 1.5f);
+                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3(sx, 2.4f, -1.95f), new Color(1.0f, 0.65f, 0.25f), range: 6.5f, intensity: 1.2f);
+            }
+            else if (type == RTSBuildingType.Market)
+            {
+                float mx = usedArchModel ? 0.65f : -0.65f;
+                RTSBuildingBanner.AttachBanner(building, new Vector3(mx, 3.40f, 1.75f), height: 2.2f, width: 1.5f);
+                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3(mx, 1.7f, 0.75f), new Color(1.0f, 0.78f, 0.38f), range: 7f, intensity: 1.1f);
             }
             else if (type == RTSBuildingType.Blacksmith)
             {
-                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3(0, 1.6f, -1.5f), new Color(1.0f, 0.55f, 0.15f), range: 7f, intensity: 1.35f);
+                float fx = usedArchModel ? 0.55f : -0.55f;
+                float cx = usedArchModel ? -0.85f : 0.85f;
+                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3(fx, 1.15f, 0.15f), new Color(1.0f, 0.48f, 0.10f), range: 7.5f, intensity: 1.85f);
+                RTSAtmosphericLight.CreateTorch(building.transform, new Vector3(cx, 0.85f, -1.25f), new Color(1.0f, 0.52f, 0.12f), range: 5.5f, intensity: 1.35f);
             }
 
             // Her iki oyuncuda da inşa edilen tüm binalar (sancak, iskele ve meşaleler dahil) 3D sahnede görünür kalır
