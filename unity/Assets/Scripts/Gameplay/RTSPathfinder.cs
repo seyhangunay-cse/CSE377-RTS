@@ -86,6 +86,28 @@ namespace CSE377.Gameplay
                     }
                 }
             }
+
+            // 3. Dost Şehir Kapısı Kemer Geçidini Açık Tut (Komşu surların padding'i geçidi kapatmasın)
+            foreach (var b in RTSBuilding.AllBuildings)
+            {
+                if (b == null || !b.gameObject.activeInHierarchy || b.currentHp <= 0) continue;
+                if (b.buildingType != RTSBuildingType.CityGate || b.team != unitTeam) continue;
+
+                int cGx = WorldToCell(b.transform.position.x);
+                int cGz = WorldToCell(b.transform.position.z);
+                for (int gx = Mathf.Max(0, cGx - 2); gx <= Mathf.Min(GridDim - 1, cGx + 2); gx++)
+                {
+                    for (int gz = Mathf.Max(0, cGz - 2); gz <= Mathf.Min(GridDim - 1, cGz + 2); gz++)
+                    {
+                        Vector3 cellWorld = CellToWorld(gx, gz, b.transform.position.y);
+                        Vector3 localCell = b.transform.InverseTransformPoint(cellWorld);
+                        if (Mathf.Abs(localCell.x) <= 1.35f && Mathf.Abs(localCell.z) <= 2.4f)
+                        {
+                            blocked[gx, gz] = false;
+                        }
+                    }
+                }
+            }
         }
 
         private static bool FindNearestWalkable(int cx, int cz, out int outX, out int outZ)

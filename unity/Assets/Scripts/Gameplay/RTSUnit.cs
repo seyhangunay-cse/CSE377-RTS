@@ -240,6 +240,7 @@ namespace CSE377.Gameplay
             {
                 if (b != null)
                 {
+                    if (b.buildingType == RTSBuildingType.CityGate && b.team == this.team) continue;
                     Collider bCol = b.GetComponent<Collider>();
                     if (bCol != null && bCol.bounds.Intersects(myCol.bounds))
                     {
@@ -795,6 +796,11 @@ namespace CSE377.Gameplay
                 foreach (var b in RTSBuilding.AllBuildings)
                 {
                     if (b == null || !b.gameObject.activeInHierarchy) continue;
+                    if (b.buildingType == RTSBuildingType.CityGate && b.team == this.team)
+                    {
+                        Vector3 localUnitPos = b.transform.InverseTransformPoint(transform.position);
+                        if (Mathf.Abs(localUnitPos.x) < 1.45f) continue;
+                    }
                     Collider bCol = b.GetComponent<Collider>();
                     if (bCol != null && bCol.bounds.Intersects(myCol.bounds))
                     {

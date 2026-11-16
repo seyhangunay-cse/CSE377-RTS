@@ -909,8 +909,8 @@ namespace CSE377.Gameplay
             InstantiatePart("wall-doorway", parent, new Vector3(-0.75f, 0, 0), Quaternion.identity, new Vector3(1.5f, 1.7f, 1.4f));
             InstantiatePart("wall-doorway", parent, new Vector3( 0.75f, 0, 0), Quaternion.Euler(0, 180f, 0), new Vector3(1.5f, 1.7f, 1.4f));
 
-            // 2. Ağır Demir Parmaklıklı Kapı / Portcullis
-            InstantiatePart("metal-gate", parent, new Vector3(0, 0.35f, 0), Quaternion.identity, new Vector3(2.1f, 1.8f, 1.5f));
+            // 2. Ağır Demir Parmaklıklı Kapı / Portcullis (Dost geçişi için kemer altında açık/yukarı konumda)
+            InstantiatePart("metal-gate", parent, new Vector3(0, 1.45f, 0), Quaternion.identity, new Vector3(2.1f, 1.3f, 1.5f));
 
             // 3. Kapı Üstü Muhafız Yolu & Taş Siperlik
             InstantiatePart("wall-half", parent, new Vector3(0, 2.22f, 0), Quaternion.identity, new Vector3(1.6f, 0.8f, 1.25f));
