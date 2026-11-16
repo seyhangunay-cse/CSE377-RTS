@@ -94,9 +94,20 @@ namespace CSE377.Gameplay
 
         public IReadOnlyList<RoomListingInfo> ActiveOpenRooms => activeOpenRooms;
 
+        private static string SanitizeRoomFileKey(string roomName)
+        {
+            if (string.IsNullOrWhiteSpace(roomName)) return "DEFAULT";
+            var sb = new StringBuilder(roomName.Length);
+            foreach (char c in roomName)
+            {
+                sb.Append(char.IsLetterOrDigit(c) ? c : '_');
+            }
+            return sb.ToString();
+        }
+
         private string RegistryFilePath => Path.Combine(Path.GetTempPath(), "CSE377_PhotonLobby_Rooms.json");
-        private string OutboundPacketFilePath => Path.Combine(Path.GetTempPath(), $"CSE377_PhotonRoom_{matchRoomId}_Out_{assignedTeam}.json");
-        private string InboundPacketFilePath => Path.Combine(Path.GetTempPath(), $"CSE377_PhotonRoom_{matchRoomId}_Out_{(assignedTeam == UnitTeam.Player ? UnitTeam.Enemy : UnitTeam.Player)}.json");
+        private string OutboundPacketFilePath => Path.Combine(Path.GetTempPath(), $"CSE377_PhotonRoom_{SanitizeRoomFileKey(matchRoomId)}_Out_{assignedTeam}.json");
+        private string InboundPacketFilePath => Path.Combine(Path.GetTempPath(), $"CSE377_PhotonRoom_{SanitizeRoomFileKey(matchRoomId)}_Out_{(assignedTeam == UnitTeam.Player ? UnitTeam.Enemy : UnitTeam.Player)}.json");
 
         [Serializable]
         private class NetworkPacket
@@ -230,7 +241,7 @@ namespace CSE377.Gameplay
         {
             if (!isMultiplayerMode || !isRoomConnected)
             {
-                CreatePhotonRoom(localPlayerName, matchRoomId);
+                CreatePhotonRoom(localPlayerName);
             }
 
             guestPlayerName = "Kırmızı_Test_Komutanı";
@@ -375,23 +386,30 @@ namespace CSE377.Gameplay
         }
 
         /// <summary>
-        /// Açık odalarla çakışmayan benzersiz bir otomatik oda kodu üretir (Örn: ODA-4821).
+        /// Odayı açan oyuncunun kullanıcı adına göre benzersiz bir oda adı üretir (Örn: "Rosen Odası").
         /// </summary>
-        public string GenerateUniqueRoomCode()
+        public string GenerateUniqueRoomCode(string playerName = null)
         {
             RefreshOpenRoomsRegistry();
-            for (int i = 0; i < 30; i++)
+            string owner = string.IsNullOrWhiteSpace(playerName) ? localPlayerName : playerName.Trim();
+            if (string.IsNullOrWhiteSpace(owner)) owner = "Komutan";
+
+            string baseRoom = $"{owner} Odası";
+            bool existsBase = activeOpenRooms.Exists(r => r != null && string.Equals(r.roomName, baseRoom, StringComparison.OrdinalIgnoreCase));
+            if (!existsBase) return baseRoom;
+
+            for (int i = 2; i < 50; i++)
             {
-                string candidate = $"ODA-{UnityEngine.Random.Range(1000, 9999)}";
+                string candidate = $"{owner} Odası #{i}";
                 bool exists = activeOpenRooms.Exists(r => r != null && string.Equals(r.roomName, candidate, StringComparison.OrdinalIgnoreCase));
                 if (!exists) return candidate;
             }
-            return $"ODA-{DateTime.UtcNow.Millisecond:D3}{UnityEngine.Random.Range(1, 9)}";
+            return $"{owner} Odası #{UnityEngine.Random.Range(100, 999)}";
         }
 
         /// <summary>
         /// Yeni bir Photon Odası açar (1. Oyuncu / Host / Mavi Krallık + Mavi AI Komutan).
-        /// Oda kodu belirtilmezse sistem tarafından otomatik benzersiz kod atanır.
+        /// Oda adı belirtilmezse kurucunun kullanıcı adına göre otomatik atanır.
         /// </summary>
         public void CreatePhotonRoom(string playerName, string roomCode = null)
         {
@@ -401,8 +419,8 @@ namespace CSE377.Gameplay
             }
             if (!string.IsNullOrWhiteSpace(playerName)) localPlayerName = playerName.Trim();
             string finalRoomCode = string.IsNullOrWhiteSpace(roomCode)
-                ? GenerateUniqueRoomCode()
-                : roomCode.Trim().ToUpperInvariant();
+                ? GenerateUniqueRoomCode(localPlayerName)
+                : roomCode.Trim();
             hostPlayerName = localPlayerName;
             hostInstanceId = clientInstanceId;
             guestPlayerName = "";
@@ -418,7 +436,7 @@ namespace CSE377.Gameplay
         public void JoinPhotonRoom(string playerName, string roomCode)
         {
             if (!string.IsNullOrWhiteSpace(playerName)) localPlayerName = playerName.Trim();
-            string normalizedRoom = string.IsNullOrWhiteSpace(roomCode) ? "ODA-101" : roomCode.Trim().ToUpperInvariant();
+            string normalizedRoom = string.IsNullOrWhiteSpace(roomCode) ? $"{localPlayerName} Odası" : roomCode.Trim();
 
             // Kendi açtığımız odaya aynı istemciden 2. oyuncu olarak girmeyi engelle!
             var existingRoom = activeOpenRooms.Find(r => r != null && string.Equals(r.roomName, normalizedRoom, StringComparison.OrdinalIgnoreCase));
@@ -455,7 +473,7 @@ namespace CSE377.Gameplay
         /// </summary>
         public void ConnectToPhotonRoom(string roomCode, UnitTeam teamRole)
         {
-            matchRoomId = string.IsNullOrWhiteSpace(roomCode) ? "ODA-101" : roomCode.Trim().ToUpperInvariant();
+            matchRoomId = string.IsNullOrWhiteSpace(roomCode) ? $"{localPlayerName} Odası" : roomCode.Trim();
             assignedTeam = teamRole;
             isHost = (teamRole == UnitTeam.Player);
             isMultiplayerMode = true;
