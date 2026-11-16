@@ -40,9 +40,9 @@ namespace CSE377.AI
                 { "barracks", (150, 0, 0) },
                 { "tower", (125, 0, 50) },
                 { "blacksmith", (150, 0, 0) },
-                { "towncenter", (250, 0, 0) },
-                { "town_center", (250, 0, 0) },
-                { "village_center", (250, 0, 0) },
+                { "towncenter", (350, 0, 100) },
+                { "town_center", (350, 0, 100) },
+                { "village_center", (350, 0, 100) },
                 { "house", (30, 0, 0) },
                 { "farm", (60, 0, 0) },
                 { "stonewall", (20, 0, 10) },
@@ -67,8 +67,8 @@ namespace CSE377.AI
                 { "Scale_Armor", (0, 100, 80) },
                 { "Fletching", (50, 100, 0) },
                 { "Wheelbarrow", (50, 175, 0) },
-                { "Ballistics", (100, 150, 100) },
-                { "Feudal_Age", (0, 500, 0) },
+                { "Ballistics", (300, 0, 175) },
+                { "Feudal_Age", (200, 500, 0) },
                 { "Castle_Age", (0, 800, 200) }
             };
 

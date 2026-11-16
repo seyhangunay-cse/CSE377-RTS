@@ -12,6 +12,7 @@ using CSE377.AI;
 #if PHOTON_UNITY_NETWORKING
 using Photon.Pun;
 using Photon.Realtime;
+using ExitGames.Client.Photon;
 #endif
 
 namespace CSE377.Gameplay
@@ -47,7 +48,11 @@ namespace CSE377.Gameplay
     ///   * 2. Oyuncu (Client / Katılımcı): Kırmızı Krallık (UnitTeam.Enemy) + Kırmızı AI Komutanı (RED)
     ///   * Odaya 2. oyuncu bağlanmadan (2/2 olmadan) çok oyunculu sefer başlatılamaz.
     /// </summary>
+#if PHOTON_UNITY_NETWORKING
+    public class RTSNetworkSyncManager : MonoBehaviourPunCallbacks, IOnEventCallback
+#else
     public class RTSNetworkSyncManager : MonoBehaviour
+#endif
     {
         public static RTSNetworkSyncManager Instance { get; private set; }
 
@@ -160,7 +165,71 @@ namespace CSE377.Gameplay
         {
             RemoveOwnRoomFromRegistry();
             CloseUdpSocket();
+#if PHOTON_UNITY_NETWORKING
+            PhotonNetwork.RemoveCallbackTarget(this);
+#endif
         }
+
+#if PHOTON_UNITY_NETWORKING
+        private const byte PhotonPacketEventCode = 77;
+
+        public override void OnEnable()
+        {
+            base.OnEnable();
+            PhotonNetwork.AddCallbackTarget(this);
+        }
+
+        public override void OnDisable()
+        {
+            base.OnDisable();
+            PhotonNetwork.RemoveCallbackTarget(this);
+        }
+
+        public override void OnConnectedToMaster()
+        {
+            if (isMultiplayerMode && isRoomConnected && !PhotonNetwork.InRoom)
+            {
+                RoomOptions opts = new RoomOptions { MaxPlayers = 2, IsVisible = true, IsOpen = true };
+                PhotonNetwork.JoinOrCreateRoom(matchRoomId, opts, TypedLobby.Default);
+            }
+            else if (!PhotonNetwork.InLobby)
+            {
+                PhotonNetwork.JoinLobby();
+            }
+        }
+
+        public override void OnJoinedRoom()
+        {
+            if (PhotonNetwork.CurrentRoom != null)
+            {
+                connectedPlayersCount = Mathf.Max(connectedPlayersCount, PhotonNetwork.CurrentRoom.PlayerCount);
+                SendRawPacket("HELLO", localPlayerName);
+                RefreshStatusMessage();
+                OnRoomStateChanged?.Invoke();
+            }
+        }
+
+        public override void OnPlayerEnteredRoom(Player newPlayer)
+        {
+            if (newPlayer != null && !newPlayer.IsLocal)
+            {
+                guestPlayerName = string.IsNullOrEmpty(newPlayer.NickName) ? "Rakip Komutan" : newPlayer.NickName;
+                guestInstanceId = $"PUN_{newPlayer.ActorNumber}";
+                connectedPlayersCount = 2;
+                SendRawPacket("HELLO", localPlayerName);
+                RefreshStatusMessage();
+                OnRoomStateChanged?.Invoke();
+            }
+        }
+
+        public void OnEvent(EventData photonEvent)
+        {
+            if (photonEvent != null && photonEvent.Code == PhotonPacketEventCode && photonEvent.CustomData is string json)
+            {
+                incomingPackets.Enqueue(json);
+            }
+        }
+#endif
 
         private void Update()
         {
@@ -811,17 +880,31 @@ namespace CSE377.Gameplay
             };
             processedPacketIds.Add(pkt.packetId);
 
-            // 1. Kanal: Düşük gecikmeli UDP Soketi
+            // 1. Kanal: Düşük gecikmeli UDP Soketi (Yerel Test / LAN)
+            string packetJson = JsonUtility.ToJson(pkt);
             if (udpPeer != null)
             {
                 try
                 {
-                    string json = JsonUtility.ToJson(pkt);
-                    byte[] bytes = Encoding.UTF8.GetBytes(json);
+                    byte[] bytes = Encoding.UTF8.GetBytes(packetJson);
                     udpPeer.Send(bytes, bytes.Length, "127.0.0.1", remotePort);
                 }
                 catch { }
             }
+
+#if PHOTON_UNITY_NETWORKING
+            // 1.5 Kanal: Photon PUN 2 Cloud (Uzak bilgisayarlar arası internet üzerinden gerçek zamanlı iletim)
+            if (PhotonNetwork.InRoom)
+            {
+                try
+                {
+                    var raiseOpts = new RaiseEventOptions { Receivers = ReceiverGroup.Others };
+                    var sendOpts = (packetType == "TEAM_STATE_SYNC") ? SendOptions.SendUnreliable : SendOptions.SendReliable;
+                    PhotonNetwork.RaiseEvent(PhotonPacketEventCode, packetJson, raiseOpts, sendOpts);
+                }
+                catch { }
+            }
+#endif
 
             // 2. Kanal: %100 Güvenilir Takım Bazlı Oda Paket Kuyruğu (Her takım kendi dosyasına yazar, karşı takımın dosyasını okur; çakışma ve paket kaybı %100 önlenir)
             if (packetType != "HELLO")
