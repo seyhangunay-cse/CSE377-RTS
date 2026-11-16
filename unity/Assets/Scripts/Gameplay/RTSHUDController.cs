@@ -864,16 +864,6 @@ namespace CSE377.Gameplay
             UnitTeam team = (net != null) ? net.assignedTeam : RTSGameManager.LocalPlayerTeam;
             string roomCode = (net != null && !string.IsNullOrEmpty(net.matchRoomId)) ? net.matchRoomId : "ODA-101";
 
-            if (mpPlayerNameInput != null && string.IsNullOrEmpty(mpPlayerNameInput.text) && net != null)
-            {
-                mpPlayerNameInput.text = net.localPlayerName;
-            }
-
-            if (startScreenRoomInput != null && string.IsNullOrEmpty(startScreenRoomInput.text))
-            {
-                startScreenRoomInput.text = roomCode;
-            }
-
             // Açık Odalar Listesini Güncelle
             var openRooms = (net != null) ? net.ActiveOpenRooms : null;
             int roomCount = (openRooms != null) ? openRooms.Count : 0;
