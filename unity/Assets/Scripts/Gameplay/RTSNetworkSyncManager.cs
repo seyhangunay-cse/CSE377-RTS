@@ -29,6 +29,7 @@ namespace CSE377.Gameplay
         public int playerCount;
         public long lastUpdatedTicks;
         public bool matchStarted;
+        public string winnerTeam = "";
     }
 
     [Serializable]
@@ -636,6 +637,15 @@ namespace CSE377.Gameplay
                             hud.LaunchMatchFromMenu(fromNetworkRpc: true);
                         }
                     }
+
+                    // Eğer odadaki oyunculardan biri maçı kazandıysa (winnerTeam doluysa), diğer oyuncuda da ZAFER/YENİLGİ ekranını anında aç!
+                    if (hasLaunchedCurrentRoomMatch && !string.IsNullOrEmpty(myRoom.winnerTeam) && Enum.TryParse(myRoom.winnerTeam, out UnitTeam regWinner))
+                    {
+                        if (RTSGameManager.Instance != null && !RTSGameManager.Instance.isGameOver)
+                        {
+                            RTSGameManager.Instance.ForceGameOverFromNetwork(regWinner);
+                        }
+                    }
                 }
 
                 File.WriteAllText(RegistryFilePath, JsonUtility.ToJson(reg), Encoding.UTF8);
@@ -1085,6 +1095,80 @@ namespace CSE377.Gameplay
                 {
                     ApplyRemoteTeamLiveState(senderTeam, pkt.payload);
                 }
+                else if (pkt.type == "BLD_HP_SYNC" && !string.IsNullOrEmpty(pkt.payload))
+                {
+                    // Format: targetTeam|bType|x|z|hp
+                    string[] p = pkt.payload.Split('|');
+                    if (p.Length >= 5 && Enum.TryParse(p[0], out UnitTeam bTeam) && Enum.TryParse(p[1], out RTSBuildingType bType))
+                    {
+                        float bx = float.Parse(p[2], CultureInfo.InvariantCulture);
+                        float bz = float.Parse(p[3], CultureInfo.InvariantCulture);
+                        int syncedHp = int.Parse(p[4], CultureInfo.InvariantCulture);
+
+                        RTSBuilding targetBld = null;
+                        float bestD = 8f;
+                        foreach (var b in RTSBuilding.AllBuildings)
+                        {
+                            if (b == null || b.isDestroyed || b.team != bTeam || b.buildingType != bType) continue;
+                            float d = Vector2.Distance(new Vector2(b.transform.position.x, b.transform.position.z), new Vector2(bx, bz));
+                            if (d < bestD)
+                            {
+                                bestD = d;
+                                targetBld = b;
+                            }
+                        }
+                        if (targetBld != null)
+                        {
+                            targetBld.ApplyNetworkHp(syncedHp);
+                        }
+                    }
+                }
+                else if (pkt.type == "UNIT_HP_SYNC" && !string.IsNullOrEmpty(pkt.payload))
+                {
+                    // Format: targetTeam|uType|x|z|hp
+                    string[] p = pkt.payload.Split('|');
+                    if (p.Length >= 5 && Enum.TryParse(p[0], out UnitTeam uTeam))
+                    {
+                        string uType = p[1].ToLowerInvariant();
+                        float ux = float.Parse(p[2], CultureInfo.InvariantCulture);
+                        float uz = float.Parse(p[3], CultureInfo.InvariantCulture);
+                        int syncedHp = int.Parse(p[4], CultureInfo.InvariantCulture);
+
+                        RTSUnit targetUnit = FindClosestTeamUnit(uTeam, uType, new Vector3(ux, 0f, uz), null);
+                        if (targetUnit != null && Vector2.Distance(new Vector2(targetUnit.transform.position.x, targetUnit.transform.position.z), new Vector2(ux, uz)) < 8f)
+                        {
+                            targetUnit.ApplyNetworkHp(syncedHp);
+                        }
+                    }
+                }
+                else if (pkt.type == "TECH_SYNC" && !string.IsNullOrEmpty(pkt.payload))
+                {
+                    RTSTechManager.Instance?.ApplyRemoteTech(pkt.payload, senderTeam);
+                }
+                else if (pkt.type == "GAME_OVER" && !string.IsNullOrEmpty(pkt.payload))
+                {
+                    if (Enum.TryParse(pkt.payload, out UnitTeam winnerTeam))
+                    {
+                        RTSGameManager.Instance?.ForceGameOverFromNetwork(winnerTeam);
+                    }
+                }
+                else if (pkt.type == "MATCH_RESTART")
+                {
+                    if (!string.IsNullOrEmpty(pkt.payload))
+                    {
+                        string[] parts = pkt.payload.Split('|');
+                        if (parts.Length >= 1 && Enum.TryParse(parts[0], out RTSMapType rMap))
+                        {
+                            RTSAutoBootstrap.SelectedMap = rMap;
+                        }
+                        if (parts.Length >= 2 && int.TryParse(parts[1], out int rSeed) && rSeed != 0)
+                        {
+                            RTSAutoBootstrap.MatchRandomSeed = rSeed;
+                        }
+                    }
+                    hasLaunchedCurrentRoomMatch = true;
+                    RTSHUDController.Instance?.ExecuteLocalMatchRestart();
+                }
                 else if (pkt.type == "MAP_SYNC" && !string.IsNullOrEmpty(pkt.payload))
                 {
                     if (Enum.TryParse(pkt.payload, out RTSMapType syncedMap) && RTSAutoBootstrap.SelectedMap != syncedMap)
@@ -1199,9 +1283,9 @@ namespace CSE377.Gameplay
             string[] sections = payload.Split('|');
 
             // 1. Karşı takımın canlı birim konumlarını, yeni basılan askerlerini, hareket hedeflerini ve canlarını eşitle
+            var usedUnits = new HashSet<RTSUnit>();
             if (sections.Length >= 1 && !string.IsNullOrWhiteSpace(sections[0]))
             {
-                var usedUnits = new HashSet<RTSUnit>();
                 string[] unitEntries = sections[0].Split(';');
                 foreach (string entry in unitEntries)
                 {
@@ -1232,7 +1316,7 @@ namespace CSE377.Gameplay
                             usedUnits.Add(match);
                             if (hp < match.currentHp)
                             {
-                                match.currentHp = hp;
+                                match.ApplyNetworkHp(hp);
                             }
 
                             Vector3 destPos = new Vector3(dx, 0.1f, dz);
@@ -1256,10 +1340,20 @@ namespace CSE377.Gameplay
                 }
             }
 
+            // Karşı takımın sahnesinde ölmüş (canlı listesinde artık yer almayan) birimleri bu sahnede de temizle
+            var currentUnitsSnapshot = new List<RTSUnit>(RTSUnit.AllUnits);
+            foreach (var u in currentUnitsSnapshot)
+            {
+                if (u != null && !u.isDead && u.currentHp > 0 && u.team == remoteTeam && !usedUnits.Contains(u))
+                {
+                    u.ApplyNetworkHp(0);
+                }
+            }
+
             // 2. Karşı takımın yeni yaptığı binaları, inşaat ilerlemelerini ve can değerlerini anında eşitle!
+            var usedBlds = new HashSet<RTSBuilding>();
             if (sections.Length >= 2 && !string.IsNullOrWhiteSpace(sections[1]))
             {
-                var usedBlds = new HashSet<RTSBuilding>();
                 string[] bldEntries = sections[1].Split(';');
                 foreach (string entry in bldEntries)
                 {
@@ -1311,11 +1405,20 @@ namespace CSE377.Gameplay
                             }
                             if (hp < bestBld.currentHp)
                             {
-                                bestBld.currentHp = hp;
-                                bestBld.CheckDamageVisualState();
+                                bestBld.ApplyNetworkHp(hp);
                             }
                         }
                     }
+                }
+            }
+
+            // Karşı takımın sahnesinde yıkılmış (canlı listesinde artık yer almayan) binaları bu sahnede de yık
+            var currentBldsSnapshot = new List<RTSBuilding>(RTSBuilding.AllBuildings);
+            foreach (var b in currentBldsSnapshot)
+            {
+                if (b != null && !b.isDestroyed && b.currentHp > 0 && b.team == remoteTeam && !usedBlds.Contains(b))
+                {
+                    b.ApplyNetworkHp(0);
                 }
             }
         }
@@ -1473,6 +1576,7 @@ namespace CSE377.Gameplay
                         r.mapType = RTSAutoBootstrap.SelectedMap.ToString();
                         r.matchSeed = RTSAutoBootstrap.MatchRandomSeed;
                         r.matchStarted = true;
+                        r.winnerTeam = "";
                         r.lastUpdatedTicks = DateTime.UtcNow.Ticks;
                         File.WriteAllText(RegistryFilePath, JsonUtility.ToJson(reg), Encoding.UTF8);
                     }
@@ -1480,6 +1584,93 @@ namespace CSE377.Gameplay
             }
             catch { }
             SendRawPacket("MATCH_START", $"{RTSAutoBootstrap.SelectedMap}|{RTSAutoBootstrap.MatchRandomSeed}");
+        }
+
+        /// <summary>
+        /// Herhangi bir binanın aldığı hasarı veya yıkımını odadaki diğer oyuncuya anında senkronize eder.
+        /// </summary>
+        public void BroadcastBuildingHpSync(RTSBuilding bld, bool forceZero = false)
+        {
+            if (!isMultiplayerMode || !isRoomConnected || bld == null) return;
+            int hpToSync = forceZero ? 0 : bld.currentHp;
+            string payload = string.Format(CultureInfo.InvariantCulture, "{0}|{1}|{2:F2}|{3:F2}|{4}",
+                bld.team, bld.buildingType, bld.transform.position.x, bld.transform.position.z, hpToSync);
+            SendRawPacket("BLD_HP_SYNC", payload);
+        }
+
+        /// <summary>
+        /// Herhangi bir askerin/köylünün aldığı hasarı veya ölümünü odadaki diğer oyuncuya anında senkronize eder.
+        /// </summary>
+        public void BroadcastUnitHpSync(RTSUnit unit, bool forceZero = false)
+        {
+            if (!isMultiplayerMode || !isRoomConnected || unit == null) return;
+            int hpToSync = forceZero ? 0 : unit.currentHp;
+            string payload = string.Format(CultureInfo.InvariantCulture, "{0}|{1}|{2:F2}|{3:F2}|{4}",
+                unit.team, unit.unitType.ToLowerInvariant(), unit.transform.position.x, unit.transform.position.z, hpToSync);
+            SendRawPacket("UNIT_HP_SYNC", payload);
+        }
+
+        /// <summary>
+        /// Araştırılan teknoloji veya çağ ilerlemesini (Feodal Çağ, Kale Çağı, Demirci geliştirmeleri) diğer oyuncuya senkronize eder.
+        /// </summary>
+        public void BroadcastTechResearch(string techId, UnitTeam team)
+        {
+            if (!isMultiplayerMode || !isRoomConnected || string.IsNullOrEmpty(techId)) return;
+            SendRawPacket("TECH_SYNC", techId);
+        }
+
+        /// <summary>
+        /// Şehir Merkezi yıkıldığında maç sonucunu (Kazanan: ZAFER / Kaybeden: YENİLGİ) her iki oyuncuda aynı anda tetikler!
+        /// </summary>
+        public void BroadcastGameOver(UnitTeam winnerTeam)
+        {
+            if (!isMultiplayerMode || !isRoomConnected) return;
+            try
+            {
+                if (File.Exists(RegistryFilePath))
+                {
+                    string raw = File.ReadAllText(RegistryFilePath, Encoding.UTF8);
+                    var reg = JsonUtility.FromJson<RoomRegistryData>(raw);
+                    var r = reg?.rooms?.Find(x => x != null && string.Equals(x.roomName, matchRoomId, StringComparison.OrdinalIgnoreCase));
+                    if (r != null)
+                    {
+                        r.winnerTeam = winnerTeam.ToString();
+                        r.lastUpdatedTicks = DateTime.UtcNow.Ticks;
+                        File.WriteAllText(RegistryFilePath, JsonUtility.ToJson(reg), Encoding.UTF8);
+                    }
+                }
+            }
+            catch { }
+            SendRawPacket("GAME_OVER", winnerTeam.ToString());
+        }
+
+        /// <summary>
+        /// Oyun sonu ekranından "Tekrar Oyna"ya basıldığında her iki oyuncunun sahnesini aynı tohumla yeniden başlatır.
+        /// </summary>
+        public void BroadcastMatchRestart()
+        {
+            if (!isMultiplayerMode || !isRoomConnected) return;
+            hasLaunchedCurrentRoomMatch = true;
+            try
+            {
+                if (File.Exists(RegistryFilePath))
+                {
+                    string raw = File.ReadAllText(RegistryFilePath, Encoding.UTF8);
+                    var reg = JsonUtility.FromJson<RoomRegistryData>(raw);
+                    var r = reg?.rooms?.Find(x => x != null && string.Equals(x.roomName, matchRoomId, StringComparison.OrdinalIgnoreCase));
+                    if (r != null)
+                    {
+                        r.mapType = RTSAutoBootstrap.SelectedMap.ToString();
+                        r.matchSeed = RTSAutoBootstrap.MatchRandomSeed;
+                        r.matchStarted = true;
+                        r.winnerTeam = "";
+                        r.lastUpdatedTicks = DateTime.UtcNow.Ticks;
+                        File.WriteAllText(RegistryFilePath, JsonUtility.ToJson(reg), Encoding.UTF8);
+                    }
+                }
+            }
+            catch { }
+            SendRawPacket("MATCH_RESTART", $"{RTSAutoBootstrap.SelectedMap}|{RTSAutoBootstrap.MatchRandomSeed}");
         }
 
         /// <summary>

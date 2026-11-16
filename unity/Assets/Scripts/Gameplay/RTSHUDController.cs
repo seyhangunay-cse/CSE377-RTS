@@ -1301,9 +1301,19 @@ namespace CSE377.Gameplay
         }
 
         /// <summary>
-        /// Mevcut haritada maçı sıfırdan yeniden başlatır.
+        /// Mevcut haritada maçı sıfırdan yeniden başlatır (Çok oyunculu odada diğer oyuncuyu da senkronize şekilde yeniden başlatır).
         /// </summary>
         public void RestartCurrentMatch()
+        {
+            if (RTSNetworkSyncManager.Instance != null && RTSNetworkSyncManager.Instance.isMultiplayerMode && RTSNetworkSyncManager.Instance.isRoomConnected)
+            {
+                RTSAutoBootstrap.MatchRandomSeed = UnityEngine.Random.Range(100000, 999999);
+                RTSNetworkSyncManager.Instance.BroadcastMatchRestart();
+            }
+            ExecuteLocalMatchRestart();
+        }
+
+        public void ExecuteLocalMatchRestart()
         {
             if (pauseMenuModal != null) pauseMenuModal.SetActive(false);
             if (gameOverModal != null) gameOverModal.SetActive(false);
@@ -1319,6 +1329,7 @@ namespace CSE377.Gameplay
 
             RTSAudioManager.Instance?.ResetCombatAudio();
             RTSAutoBootstrap.Instance?.RebuildMapForSelectedType();
+            RTSAutoBootstrap.Instance?.RefreshPerspectiveForLocalTeam();
             Time.timeScale = 1f;
             gameManager?.StartMatch();
             RTSAudioManager.Instance?.PlaySound(RTSSoundType.WarHorn);
@@ -2537,15 +2548,15 @@ namespace CSE377.Gameplay
 
                 if (gameOverTitleText != null)
                 {
-                    gameOverTitleText.text = isVictory ? "ZAFER! HARİTA FETHEDİLDİ!" : "YENİLGİ! ŞEHİR MERKEZİ DÜŞTÜ!";
+                    gameOverTitleText.text = isVictory ? "🏆 ZAFER! RAKİP KARARGAH FETHEDİLDİ!" : "☠️ YENİLGİ! ŞEHİR MERKEZİNİZ DÜŞTÜ!";
                     gameOverTitleText.color = isVictory ? new Color(1f, 0.85f, 0.2f) : new Color(1f, 0.35f, 0.35f);
                 }
 
                 if (gameOverSubtitleText != null)
                 {
                     gameOverSubtitleText.text = isVictory
-                        ? "Düşman Karargahı tamamen imha edildi. Kuzey toprakları artık senin hükümdarlığında!"
-                        : "Ana Şehir Merkeziniz düşman kuşatmasında yıkıldı. Krallığınız haritadan silindi.";
+                        ? "Rakip Şehir Merkezi tamamen imha edildi! Savaş alanı sizin hükümdarlığınızda!"
+                        : "Ana Şehir Merkeziniz rakip kuşatmasında yıkıldı. Savaşı rakip komutan kazandı!";
                 }
 
                 if (gameOverStatsText != null)

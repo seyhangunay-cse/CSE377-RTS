@@ -140,6 +140,7 @@ namespace CSE377.Gameplay
             isGameOver = false;
             matchStartTime = Time.time;
             nextRaidTime = Time.time + GetInitialRaidDelay();
+            RTSTechManager.Instance?.ResetTechsForNewMatch();
             UpdateHUD();
         }
 
@@ -525,26 +526,39 @@ namespace CSE377.Gameplay
             if (isGameOver || building == null) return;
 
             float matchTime = Time.time - matchStartTime;
+            if (matchTime < 1.5f) return;
 
-            if (building.team != LocalPlayerTeam && building.buildingType == RTSBuildingType.TownCenter)
+            if (building.buildingType == RTSBuildingType.TownCenter)
             {
-                // Erken maç ve kendi kendine zafer koruması: İlk 30 saniyede veya hiç düşman öldürülmeden oyun bitemez
-                if (matchTime < 30f && enemiesKilled == 0)
+                UnitTeam winnerTeam = (building.team == UnitTeam.Player) ? UnitTeam.Enemy : UnitTeam.Player;
+                isGameOver = true;
+
+                // Çok oyunculu odadaki diğer oyuncuya da maçın bittiğini (Kazanan: ZAFER / Kaybeden: YENİLGİ) anında bildir!
+                RTSNetworkSyncManager.Instance?.BroadcastGameOver(winnerTeam);
+
+                TriggerGameOver(isVictory: (winnerTeam == LocalPlayerTeam));
+            }
+        }
+
+        /// <summary>
+        /// Ağ üzerinden maç sonu (GAME_OVER) sinyali alındığında kazanan oyuncuda ZAFER, kaybeden oyuncuda YENİLGİ ekranını açar.
+        /// </summary>
+        public void ForceGameOverFromNetwork(UnitTeam winnerTeam)
+        {
+            if (isGameOver) return;
+            isGameOver = true;
+
+            UnitTeam loserTeam = (winnerTeam == UnitTeam.Player) ? UnitTeam.Enemy : UnitTeam.Player;
+            var allBlds = new List<RTSBuilding>(RTSBuilding.AllBuildings);
+            foreach (var b in allBlds)
+            {
+                if (b != null && b.team == loserTeam && b.buildingType == RTSBuildingType.TownCenter && b.currentHp > 0)
                 {
-                    Debug.LogWarning($"[RTSGameManager] Erken maçta ({matchTime:F1}s) düşman karargahı imhası zafer sayılmadı (Kendiliğinden zafer koruması).");
-                    return;
+                    b.ApplyNetworkHp(0);
                 }
+            }
 
-                // RAKİP KARARGAHI YIKILDI -> ZAFER!
-                isGameOver = true;
-                TriggerGameOver(isVictory: true);
-            }
-            else if (building.team == LocalPlayerTeam && building.buildingType == RTSBuildingType.TownCenter)
-            {
-                // DOST ŞEHİR MERKEZİ YIKILDI -> YENİLGİ!
-                isGameOver = true;
-                TriggerGameOver(isVictory: false);
-            }
+            TriggerGameOver(isVictory: (winnerTeam == LocalPlayerTeam));
         }
 
         private void TriggerGameOver(bool isVictory)

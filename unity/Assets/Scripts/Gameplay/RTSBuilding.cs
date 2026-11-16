@@ -203,8 +203,12 @@ namespace CSE377.Gameplay
             }
         }
 
+        public bool isDestroyed { get; private set; } = false;
+
         public void TakeDamage(int damage, UnitTeam? attackerTeam = null)
         {
+            if (isDestroyed || currentHp <= 0) return;
+
             // Binalar kendi takımlarından hasar alamaz (Dost ateşi ve kendi kendine yıkılma önlendi)
             if (attackerTeam.HasValue && attackerTeam.Value == this.team)
             {
@@ -225,14 +229,50 @@ namespace CSE377.Gameplay
             // Hasar durumuna göre duman/yangın efektini dinamik güncelle
             CheckDamageVisualState();
 
+            // Çok oyunculu modda bina hasarını ve yıkımını karşı oyuncuya anında senkronize et
+            RTSNetworkSyncManager.Instance?.BroadcastBuildingHpSync(this, currentHp <= 0);
+
             if (currentHp <= 0)
             {
-                Die();
+                Die(fromNetwork: false);
             }
         }
 
-        private void Die()
+        public void ApplyNetworkHp(int syncedHp)
         {
+            if (isDestroyed) return;
+            if (syncedHp < currentHp)
+            {
+                int diff = currentHp - Mathf.Max(0, syncedHp);
+                currentHp = Mathf.Max(0, syncedHp);
+                if (diff > 0)
+                {
+                    RTSVFXManager.Instance?.SpawnCombatText(transform.position + Vector3.up * 2.8f, $"-{diff}", new Color(1.0f, 0.45f, 0.20f));
+                }
+                if (team == RTSGameManager.LocalPlayerTeam)
+                {
+                    RTSMinimapController.Instance?.AddPing(transform.position, new Color32(255, 45, 45, 255), 5.5f);
+                    RTSAudioManager.Instance?.NotifyCombat();
+                }
+                CheckDamageVisualState();
+            }
+            if (currentHp <= 0 || syncedHp <= 0)
+            {
+                currentHp = 0;
+                Die(fromNetwork: true);
+            }
+        }
+
+        private void Die(bool fromNetwork = false)
+        {
+            if (isDestroyed) return;
+            isDestroyed = true;
+
+            if (!fromNetwork)
+            {
+                RTSNetworkSyncManager.Instance?.BroadcastBuildingHpSync(this, forceZero: true);
+            }
+
             Debug.LogWarning($"[{team}] '{displayName}' binası imha edildi!");
             AllBuildings.Remove(this);
 

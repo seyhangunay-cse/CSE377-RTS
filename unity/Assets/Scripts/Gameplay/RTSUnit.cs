@@ -1399,9 +1399,32 @@ namespace CSE377.Gameplay
                 }
             }
 
+            // Çok oyunculu modda birim hasarını ve ölümünü karşı oyuncuya anında senkronize et
+            RTSNetworkSyncManager.Instance?.BroadcastUnitHpSync(this, currentHp <= 0);
+
             if (currentHp <= 0)
             {
-                Die();
+                Die(fromNetwork: false);
+            }
+        }
+
+        public void ApplyNetworkHp(int syncedHp)
+        {
+            if (isDead) return;
+            if (syncedHp < currentHp)
+            {
+                int diff = currentHp - Mathf.Max(0, syncedHp);
+                currentHp = Mathf.Max(0, syncedHp);
+                UpdateHealthBar();
+                if (diff > 0)
+                {
+                    RTSVFXManager.Instance?.SpawnCombatText(transform.position, $"-{diff}", new Color(1f, 0.35f, 0.35f));
+                }
+            }
+            if (currentHp <= 0 || syncedHp <= 0)
+            {
+                currentHp = 0;
+                Die(fromNetwork: true);
             }
         }
 
@@ -1438,10 +1461,15 @@ namespace CSE377.Gameplay
 
         public bool isDead { get; private set; } = false;
 
-        private void Die()
+        private void Die(bool fromNetwork = false)
         {
             if (isDead) return;
             isDead = true;
+
+            if (!fromNetwork)
+            {
+                RTSNetworkSyncManager.Instance?.BroadcastUnitHpSync(this, forceZero: true);
+            }
 
             // 1. Tüm hareketi ve komutları anında durdur
             isMoving = false;

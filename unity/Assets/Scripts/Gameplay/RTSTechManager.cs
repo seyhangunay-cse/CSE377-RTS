@@ -27,6 +27,7 @@ namespace CSE377.Gameplay
 
         [Header("Açılmış Teknolojiler")]
         public HashSet<string> unlockedTechs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> remoteTeamUnlockedTechs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // Olay bildirimleri (UI ve birim güncellemeleri için)
         public event Action<string> OnTechnologyResearched;
@@ -36,14 +37,40 @@ namespace CSE377.Gameplay
             if (Instance == null) Instance = this;
             else Destroy(gameObject);
 
-            // Başlangıç çağı
+            ResetTechsForNewMatch();
+        }
+
+        public void ResetTechsForNewMatch()
+        {
+            unlockedTechs.Clear();
+            remoteTeamUnlockedTechs.Clear();
             unlockedTechs.Add("Age_1");
+            remoteTeamUnlockedTechs.Add("Age_1");
             currentAge = RTSAge.DarkAge;
         }
 
-        public bool HasTech(string techId)
+        public bool HasTech(string techId, UnitTeam? teamOverride = null)
         {
-            return !string.IsNullOrEmpty(techId) && unlockedTechs.Contains(techId);
+            if (string.IsNullOrEmpty(techId)) return false;
+            UnitTeam targetTeam = teamOverride ?? RTSGameManager.LocalPlayerTeam;
+            if (targetTeam == RTSGameManager.LocalPlayerTeam)
+            {
+                return unlockedTechs.Contains(techId);
+            }
+            return remoteTeamUnlockedTechs.Contains(techId);
+        }
+
+        /// <summary>
+        /// Karşı oyuncunun (ağ üzerinden) araştırdığı teknolojiyi ilgili takıma uygular.
+        /// </summary>
+        public void ApplyRemoteTech(string techId, UnitTeam remoteTeam)
+        {
+            if (string.IsNullOrEmpty(techId)) return;
+            if (remoteTeam == RTSGameManager.LocalPlayerTeam) return;
+            if (!remoteTeamUnlockedTechs.Add(techId)) return;
+
+            ApplyTechnologyEffectsForTeam(techId, remoteTeam, isLocalTeam: false);
+            Debug.Log($"[RTSTechManager] Karşı takım ({remoteTeam}) '{techId}' teknolojisini araştırdı ve sahaya uygulandı.");
         }
 
         /// <summary>
@@ -97,9 +124,11 @@ namespace CSE377.Gameplay
             gameMgr.gold -= cost.gold;
             gameMgr.UpdateHUD();
 
-            // Teknolojiyi aç
+            // Teknolojiyi aç (Yerel oyuncunun takımına uygula ve ağ üzerinden karşı oyuncuya senkronize et)
+            UnitTeam myTeam = RTSGameManager.LocalPlayerTeam;
             unlockedTechs.Add(techId);
-            ApplyTechnologyEffects(techId);
+            ApplyTechnologyEffectsForTeam(techId, myTeam, isLocalTeam: true);
+            RTSNetworkSyncManager.Instance?.BroadcastTechResearch(techId, myTeam);
 
             string successMsg = $"[TEKNOLOJİ ARAŞTIRILDI] '{techId}' ordunuza kalıcı olarak uygulandı!";
             if (techId.Equals("Feudal_Age", StringComparison.OrdinalIgnoreCase))
@@ -135,17 +164,16 @@ namespace CSE377.Gameplay
         }
 
         /// <summary>
-        /// Araştırılan teknolojinin sağladığı bonusları sahadaki mevcut birimlere uygular.
+        /// Araştırılan teknolojinin sağladığı bonusları belirtilen takımın sahadaki mevcut birimlerine ve binalarına uygular.
         /// </summary>
-        private void ApplyTechnologyEffects(string techId)
+        private void ApplyTechnologyEffectsForTeam(string techId, UnitTeam targetTeam, bool isLocalTeam)
         {
             switch (techId?.ToLowerInvariant())
             {
                 case "iron_weapons":
-                    // Piyade ve Süvarilere +2 Saldırı
                     foreach (var u in RTSUnit.AllUnits)
                     {
-                        if (u != null && u.team == UnitTeam.Player)
+                        if (u != null && u.team == targetTeam)
                         {
                             string t = u.unitType.ToLower();
                             if (t == "spearman" || t == "swordsman" || t == "cavalry")
@@ -157,10 +185,9 @@ namespace CSE377.Gameplay
                     break;
 
                 case "scale_armor":
-                    // Tüm dost birimlere +2 Zırh / +20 Can Dayanıklılığı
                     foreach (var u in RTSUnit.AllUnits)
                     {
-                        if (u != null && u.team == UnitTeam.Player)
+                        if (u != null && u.team == targetTeam)
                         {
                             u.armor += 2;
                             u.maxHp += 20;
@@ -171,10 +198,9 @@ namespace CSE377.Gameplay
                     break;
 
                 case "fletching":
-                    // Okçulara +1 Saldırı ve +1.5 Menzil
                     foreach (var u in RTSUnit.AllUnits)
                     {
-                        if (u != null && u.team == UnitTeam.Player)
+                        if (u != null && u.team == targetTeam)
                         {
                             string t = u.unitType.ToLower();
                             if (t == "archer" || t == "crossbowman")
@@ -187,34 +213,41 @@ namespace CSE377.Gameplay
                     break;
 
                 case "wheelbarrow":
-                    // Köylülerin hızı %25 artar, taşıma kapasitesi 10'dan 15'e çıkar
                     foreach (var v in FindObjectsByType<RTSVillager>(FindObjectsSortMode.None))
                     {
                         if (v != null)
                         {
-                            v.maxCapacity = 15;
                             var u = v.GetComponent<RTSUnit>();
-                            if (u != null) u.moveSpeed *= 1.25f;
+                            if (u != null && u.team == targetTeam)
+                            {
+                                v.maxCapacity = 15;
+                                u.moveSpeed *= 1.25f;
+                            }
                         }
                     }
                     break;
 
                 case "feudal_age":
-                    currentAge = RTSAge.FeudalAge;
-                    unlockedTechs.Add("Age_2");
-                    // Şehir Merkezine +800 Can Takviyesi
+                    if (isLocalTeam)
+                    {
+                        currentAge = RTSAge.FeudalAge;
+                        unlockedTechs.Add("Age_2");
+                    }
+                    else
+                    {
+                        remoteTeamUnlockedTechs.Add("Age_2");
+                    }
                     foreach (var b in RTSBuilding.AllBuildings)
                     {
-                        if (b != null && b.team == UnitTeam.Player && b.buildingType == RTSBuildingType.TownCenter)
+                        if (b != null && b.team == targetTeam && b.buildingType == RTSBuildingType.TownCenter)
                         {
                             b.maxHp += 800;
                             b.currentHp += 800;
                         }
                     }
-                    // Tüm mevcut dost birliklere +10 Can
                     foreach (var u in RTSUnit.AllUnits)
                     {
-                        if (u != null && u.team == UnitTeam.Player)
+                        if (u != null && u.team == targetTeam)
                         {
                             u.maxHp += 10;
                             u.currentHp += 10;
@@ -224,21 +257,26 @@ namespace CSE377.Gameplay
                     break;
 
                 case "castle_age":
-                    currentAge = RTSAge.CastleAge;
-                    unlockedTechs.Add("Age_3");
-                    // Şehir Merkezine +1200 Can Takviyesi
+                    if (isLocalTeam)
+                    {
+                        currentAge = RTSAge.CastleAge;
+                        unlockedTechs.Add("Age_3");
+                    }
+                    else
+                    {
+                        remoteTeamUnlockedTechs.Add("Age_3");
+                    }
                     foreach (var b in RTSBuilding.AllBuildings)
                     {
-                        if (b != null && b.team == UnitTeam.Player && b.buildingType == RTSBuildingType.TownCenter)
+                        if (b != null && b.team == targetTeam && b.buildingType == RTSBuildingType.TownCenter)
                         {
                             b.maxHp += 1200;
                             b.currentHp += 1200;
                         }
                     }
-                    // Tüm mevcut dost birliklere +15 Can ve +1 Zırh
                     foreach (var u in RTSUnit.AllUnits)
                     {
-                        if (u != null && u.team == UnitTeam.Player)
+                        if (u != null && u.team == targetTeam)
                         {
                             u.maxHp += 15;
                             u.currentHp += 15;
@@ -251,46 +289,46 @@ namespace CSE377.Gameplay
         }
 
         /// <summary>
-        /// Yeni üretilen birimlere daha önceden açılmış teknolojilerin bonuslarını yansıtır.
+        /// Yeni üretilen birimlere kendi takımının daha önceden açılmış teknolojilerinin bonuslarını yansıtır.
         /// </summary>
         public void ApplyResearchedTechsToNewUnit(RTSUnit unit)
         {
-            if (unit == null || unit.team != UnitTeam.Player) return;
-
+            if (unit == null) return;
+            UnitTeam uTeam = unit.team;
             string type = unit.unitType.ToLower();
 
-            if (HasTech("Feudal_Age"))
+            if (HasTech("Feudal_Age", uTeam))
             {
                 unit.maxHp += 10;
                 unit.currentHp = unit.maxHp;
             }
 
-            if (HasTech("Castle_Age"))
+            if (HasTech("Castle_Age", uTeam))
             {
                 unit.maxHp += 15;
                 unit.armor += 1;
                 unit.currentHp = unit.maxHp;
             }
 
-            if (HasTech("Scale_Armor"))
+            if (HasTech("Scale_Armor", uTeam))
             {
                 unit.armor += 2;
                 unit.maxHp += 20;
                 unit.currentHp = unit.maxHp;
             }
 
-            if (HasTech("Iron_Weapons") && (type == "spearman" || type == "swordsman" || type == "cavalry"))
+            if (HasTech("Iron_Weapons", uTeam) && (type == "spearman" || type == "swordsman" || type == "cavalry"))
             {
                 unit.attack += 2;
             }
 
-            if (HasTech("Fletching") && (type == "archer" || type == "crossbowman"))
+            if (HasTech("Fletching", uTeam) && (type == "archer" || type == "crossbowman"))
             {
                 unit.attack += 1;
                 unit.attackRange += 1.5f;
             }
 
-            if (HasTech("Wheelbarrow") && type == "villager")
+            if (HasTech("Wheelbarrow", uTeam) && type == "villager")
             {
                 var v = unit.GetComponent<RTSVillager>();
                 if (v != null) v.maxCapacity = 15;
