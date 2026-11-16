@@ -2373,11 +2373,8 @@ namespace CSE377.Gameplay
             var hBadge = CreateUIText(mainCard.transform, "HeaderBadge", "⚜  KRALİYET SEFER MECLİSİ & KOMUTA MERKEZİ  ⚜", 11, new Color(1f, 0.85f, 0.35f), medievalTitleFont, new Vector2(0.5f, 0.935f), new Vector2(860, 20));
             hBadge.fontStyle = FontStyle.Bold;
 
-            var sTitle = CreateUIText(mainCard.transform, "Title", "⚔️  IMPERIUM: MEDIEVAL AGENTS  ⚔️", 28, new Color(1.0f, 0.88f, 0.38f), medievalTitleFont, new Vector2(0.5f, 0.870f), new Vector2(880, 42));
+            var sTitle = CreateUIText(mainCard.transform, "Title", "⚔️  IMPERIUM: MEDIEVAL AGENTS  ⚔️", 28, new Color(1.0f, 0.88f, 0.38f), medievalTitleFont, new Vector2(0.5f, 0.845f), new Vector2(880, 42));
             sTitle.fontStyle = FontStyle.Bold;
-
-            var sSubtitle = CreateUIText(mainCard.transform, "Subtitle", "Age of Empires Tarzı Gerçek Zamanlı Strateji, Taktiksel AI Komutanlığı & Kuşatma Harbi", 13, new Color(0.96f, 0.94f, 0.88f), medievalBodyFont, new Vector2(0.5f, 0.810f), new Vector2(880, 24));
-            sSubtitle.fontStyle = FontStyle.Normal;
 
             // Altın Bölücü Çizgi
             CreateUIPanel(mainCard.transform, "HeaderDivider", new Vector2(0.08f, 0.765f), new Vector2(0.92f, 0.765f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(0, 1.5f), new Color(0.85f, 0.70f, 0.28f, 0.55f));
@@ -2447,9 +2444,6 @@ namespace CSE377.Gameplay
             var audioBtn = CreateUITexturedButton(rightCol.transform, "AudioBtn", "⚙️  SES & MÜZİK AYARLARI", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.14f), new Vector2(346, 44), new Color(0.16f, 0.22f, 0.32f));
             var audioBtnTxt = audioBtn.GetComponentInChildren<Text>();
             if (audioBtnTxt != null) { audioBtnTxt.fontSize = 13; audioBtnTxt.fontStyle = FontStyle.Bold; audioBtnTxt.color = Color.white; }
-
-            // --- C. ALT BİLGİ MÜHRÜ (LORE FOOTER) ---
-            CreateUIText(mainCard.transform, "Footer", "⚜️ IMPERIUM: MEDIEVAL AGENTS  •  Kraliyet Strateji Divanı  •  Taktiksel AI Komutanlığı ⚜️", 12, new Color(0.95f, 0.88f, 0.72f, 1.0f), medievalBodyFont, new Vector2(0.5f, 0.035f), new Vector2(860, 22));
 
             // --- 7.5 ÇOK OYUNCULU PHOTON ODA LİSTESİ MODALI (Yalnızca "ÇOK OYUNCULU" seçeneğine girince açılır) ---
             var mpModal = CreateUIPanel(canvasGo.transform, "MultiplayerLobby_Modal", new Vector2(0, 0), new Vector2(1, 1), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, new Color(0.015f, 0.02f, 0.03f, 1.0f));
