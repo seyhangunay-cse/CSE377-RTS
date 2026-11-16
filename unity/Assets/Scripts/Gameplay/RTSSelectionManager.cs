@@ -891,9 +891,18 @@ namespace CSE377.Gameplay
                     hit.collider.name.Contains("Shallow") ||
                     hit.collider.name.Contains("River_Water_Blocker")));
 
-                // 1. Hedef toplanabilir kaynak mı? (Ağaç / Altın Madeni / Böğürtlen / Tarla)
-                // Yalnızca doğrudan kaynağın kendisine tıklandığında kaynak toplama emri verilir.
+                // 1. Hedef toplanabilir kaynak mı? (Ağaç / Altın Madeni / Böğürtlen / Dost Tarla)
+                // Rakip tarlaya tıklandığında hasat değil saldırı emri verilir.
+                UnitTeam myTeam = RTSGameManager.LocalPlayerTeam;
                 var resourceSource = hasPhysicalHit ? hit.collider.GetComponentInParent<RTSResourceSource>() : null;
+                if (resourceSource != null)
+                {
+                    var resBld = resourceSource.GetComponent<RTSBuilding>();
+                    if (resBld != null && resBld.team != myTeam)
+                    {
+                        resourceSource = null;
+                    }
+                }
                 if (resourceSource == null && !isGroundHit && selectedUnits.Exists(u => u != null && u.GetComponent<RTSVillager>() != null))
                 {
                     float closestResDist = 0.8f;
@@ -901,6 +910,9 @@ namespace CSE377.Gameplay
                     {
                         if (res != null && res.remainingAmount > 0)
                         {
+                            var resBld = res.GetComponent<RTSBuilding>();
+                            if (resBld != null && resBld.team != myTeam) continue;
+
                             Collider rCol = res.GetComponent<Collider>();
                             float d = (rCol != null) 
                                 ? Vector3.Distance(new Vector3(clickWorldPos.x, 0, clickWorldPos.z), rCol.ClosestPoint(new Vector3(clickWorldPos.x, 0, clickWorldPos.z)))
@@ -956,7 +968,6 @@ namespace CSE377.Gameplay
                 }
 
                 // 2. Hedef inşa halindeki bir bina mı? (Foundation)
-                UnitTeam myTeam = RTSGameManager.LocalPlayerTeam;
                 var buildingTarget = hasPhysicalHit ? hit.collider.GetComponentInParent<RTSBuilding>() : null;
                 if ((buildingTarget == null || buildingTarget.isConstructed || buildingTarget.team != myTeam) &&
                     selectedUnits.Exists(u => u != null && u.GetComponent<RTSVillager>() != null))

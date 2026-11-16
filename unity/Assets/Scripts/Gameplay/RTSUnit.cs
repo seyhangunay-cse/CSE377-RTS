@@ -599,6 +599,9 @@ namespace CSE377.Gameplay
         {
             if (isDead || currentHp <= 0) return;
 
+            var vil = GetComponent<RTSVillager>();
+            if (vil != null) vil.CancelTask();
+
             currentAttackBuilding = null;
             isManualMoveOrder = false;
             isAutoScouting = false;
@@ -638,6 +641,9 @@ namespace CSE377.Gameplay
                 return;
             }
 
+            var vil = GetComponent<RTSVillager>();
+            if (vil != null) vil.CancelTask();
+
             currentAttackTarget = null;
             isManualMoveOrder = false;
             isAutoScouting = false;
@@ -652,10 +658,11 @@ namespace CSE377.Gameplay
                 moveWaypoints.Clear();
                 targetDestination = transform.position;
                 isMoving = false;
+                currentAttackBuilding = building;
             }
             else
             {
-                MoveTo(bPos, isManual: false);
+                MoveTo(bPos, isManual: false, forcedCrossingX: float.NaN, ignoreBuilding: building);
                 currentAttackBuilding = building;
             }
 
@@ -958,7 +965,16 @@ namespace CSE377.Gameplay
 
                                     if (!isFriendlyGate)
                                     {
-                                        // 1. Hedef İnşaat / Tamirat Binası Kontrolü
+                                        // 1. Hedef İnşaat / Tamirat / Kuşatma Binası Kontrolü
+                                        if (b != null && currentAttackBuilding == b)
+                                        {
+                                            isMoving = false;
+                                            moveWaypoints.Clear();
+                                            commandDestination = Vector3.zero;
+                                            proposedDir = Vector3.zero;
+                                            return;
+                                        }
+
                                         var villager = GetComponent<RTSVillager>();
                                         if (villager != null && b != null && 
                                             (villager.currentBuildingTask == b || (villager.currentState == VillagerState.WalkingToBuild && villager.currentBuildingTask == b)))
