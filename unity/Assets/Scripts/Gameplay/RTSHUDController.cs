@@ -1202,6 +1202,12 @@ namespace CSE377.Gameplay
                 }
             }
 
+            // F9: Hızlı Test Hilesi (+1000 Odun, +1000 Yiyecek, +1000 Altın)
+            if (Input.GetKeyDown(KeyCode.F9) && (startScreenModal == null || !startScreenModal.activeSelf))
+            {
+                TryExecuteCheatCode("/kaynak1000");
+            }
+
             UpdateRaidCountdown();
             UpdateActiveTooltip();
 
@@ -1956,8 +1962,121 @@ namespace CSE377.Gameplay
             villagerActivityText.text = $"{total}";
         }
 
+        private bool TryExecuteCheatCode(string rawInput)
+        {
+            if (string.IsNullOrWhiteSpace(rawInput)) return false;
+            string cmd = rawInput.Trim().ToLowerInvariant();
+            if (gameManager == null) gameManager = RTSGameManager.Instance;
+            if (gameManager == null) return false;
+
+            if (cmd == "/kaynak1000")
+            {
+                gameManager.wood += 1000;
+                gameManager.food += 1000;
+                gameManager.gold += 1000;
+                gameManager.UpdateHUD();
+                RTSAudioManager.Instance?.PlaySound(RTSSoundType.TechComplete);
+                SetAiStatus("[TEST HİLESİ - F9] +1000 Odun, +1000 Yiyecek, +1000 Altın eklendi!", Color.yellow);
+                return true;
+            }
+            if (cmd == "lumberjack" || cmd == "/odun")
+            {
+                gameManager.wood += 1000;
+                gameManager.UpdateHUD();
+                RTSAudioManager.Instance?.PlaySound(RTSSoundType.TechComplete);
+                SetAiStatus("[HİLE: LUMBERJACK] +1000 Odun eklendi!", Color.yellow);
+                return true;
+            }
+            if (cmd == "cheese steak jimmy's" || cmd == "cheesesteak" || cmd == "/yemek" || cmd == "/yiyecek")
+            {
+                gameManager.food += 1000;
+                gameManager.UpdateHUD();
+                RTSAudioManager.Instance?.PlaySound(RTSSoundType.TechComplete);
+                SetAiStatus("[HİLE: YİYECEK] +1000 Yiyecek eklendi!", Color.yellow);
+                return true;
+            }
+            if (cmd == "robin hood" || cmd == "robinhood" || cmd == "/altin" || cmd == "/altın")
+            {
+                gameManager.gold += 1000;
+                gameManager.UpdateHUD();
+                RTSAudioManager.Instance?.PlaySound(RTSSoundType.TechComplete);
+                SetAiStatus("[HİLE: ROBIN HOOD] +1000 Altın eklendi!", Color.yellow);
+                return true;
+            }
+            if (cmd == "/kaynak" || cmd == "greedisgood" || cmd == "hesoyam" || cmd == "/zengin")
+            {
+                gameManager.wood += 2000;
+                gameManager.food += 2000;
+                gameManager.gold += 2000;
+                gameManager.UpdateHUD();
+                RTSAudioManager.Instance?.PlaySound(RTSSoundType.TechComplete);
+                SetAiStatus("[HİLE: TÜM KAYNAKLAR] +2000 Odun, +2000 Yiyecek, +2000 Altın eklendi!", Color.yellow);
+                return true;
+            }
+            if (cmd == "aegis" || cmd == "/hizli" || cmd == "/hızlı")
+            {
+                int built = 0;
+                foreach (var b in RTSBuilding.AllBuildings)
+                {
+                    if (b != null && b.team == RTSGameManager.LocalPlayerTeam && !b.isConstructed)
+                    {
+                        b.AddConstructionProgress(100f);
+                        built++;
+                    }
+                }
+                RTSAudioManager.Instance?.PlaySound(RTSSoundType.TechComplete);
+                SetAiStatus($"[HİLE: AEGIS] {built} inşaat halindeki bina anında tamamlandı!", Color.cyan);
+                return true;
+            }
+            if (cmd == "/cag" || cmd == "/çağ")
+            {
+                var tech = RTSTechManager.Instance;
+                if (tech != null)
+                {
+                    if (!tech.HasTech("Feudal_Age"))
+                    {
+                        gameManager.wood += 200;
+                        gameManager.food += 500;
+                        tech.TryResearchTech("Feudal_Age");
+                    }
+                    else if (!tech.HasTech("Castle_Age"))
+                    {
+                        gameManager.food += 800;
+                        gameManager.gold += 200;
+                        tech.TryResearchTech("Castle_Age");
+                    }
+                    return true;
+                }
+            }
+            if (cmd == "/ordu")
+            {
+                UnitTeam myTeam = RTSGameManager.LocalPlayerTeam;
+                Vector3 basePos = (myTeam == UnitTeam.Enemy) ? RTSAutoBootstrap.CurrentEnemyBasePos : RTSAutoBootstrap.CurrentPlayerBasePos;
+                Vector3 fwd = (Vector3.zero - basePos); fwd.y = 0; fwd = (fwd.sqrMagnitude > 0.01f) ? fwd.normalized : Vector3.forward;
+                Vector3 spawnCenter = basePos + fwd * 12f;
+                string[] types = { "cavalry", "cavalry", "cavalry", "archer", "archer", "archer", "trebuchet", "trebuchet" };
+                for (int i = 0; i < types.Length; i++)
+                {
+                    Vector3 p = spawnCenter + new Vector3((i % 4 - 1.5f) * 2.2f, 0, (i / 4) * 2.2f);
+                    RTSUnit.SpawnUnit(types[i], p, myTeam);
+                    RTSNetworkSyncManager.Instance?.BroadcastUnitSpawn(types[i], p, myTeam);
+                }
+                gameManager.UpdateHUD();
+                RTSAudioManager.Instance?.PlaySound(RTSSoundType.WarHorn);
+                SetAiStatus("[HİLE: TEST ORDUSU] 3 Şövalye, 3 Okçu ve 2 Mancınık konuşlandırıldı!", Color.green);
+                return true;
+            }
+
+            return false;
+        }
+
         public void RequestPlanFromAI(string prompt)
         {
+            if (TryExecuteCheatCode(prompt))
+            {
+                return;
+            }
+
             if (gatewayClient == null)
             {
                 Debug.LogError("[RTSHUDController] AiGatewayClient referansı eksik!");
