@@ -260,7 +260,7 @@ namespace CSE377.Gameplay
             float splashRadius = 3.8f;
             int splashDamage = Mathf.RoundToInt(damage * 0.5f);
 
-            foreach (var u in RTSUnit.AllUnits)
+            foreach (var u in new System.Collections.Generic.List<RTSUnit>(RTSUnit.AllUnits))
             {
                 if (u != null && u != targetUnit && u.team != this.team && u.currentHp > 0)
                 {
@@ -278,7 +278,7 @@ namespace CSE377.Gameplay
             }
 
             // Yakındaki düşman binalarına da şarapnel hasarı
-            foreach (var b in RTSBuilding.AllBuildings)
+            foreach (var b in new System.Collections.Generic.List<RTSBuilding>(RTSBuilding.AllBuildings))
             {
                 if (b != null && b != targetBuilding && b.team != this.team && b.currentHp > 0)
                 {

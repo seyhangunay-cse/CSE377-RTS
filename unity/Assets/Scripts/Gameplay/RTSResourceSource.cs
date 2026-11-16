@@ -222,114 +222,238 @@ namespace CSE377.Gameplay
             return gathered;
         }
 
+        private static readonly Dictionary<string, Material> envMaterialCache = new Dictionary<string, Material>();
+
+        private static string ResolveEnvMaterialKey(string rawName)
+        {
+            if (string.IsNullOrEmpty(rawName)) return "granite";
+            string s = rawName.ToLowerInvariant();
+            if (s.Contains("foliage_berry")) return "foliage_berry";
+            if (s.Contains("foliage_oak")) return "foliage_oak";
+            if (s.Contains("foliage_pine")) return "foliage_pine";
+            if (s.Contains("bark_oak")) return "bark_oak";
+            if (s.Contains("bark_pine")) return "bark_pine";
+            if (s.Contains("dark_stone")) return "dark_stone";
+            if (s.Contains("window_glow")) return "window_glow";
+            if (s.Contains("granite")) return "granite";
+            if (s.Contains("cobble")) return "cobble";
+            if (s.Contains("stone")) return "stone";
+            if (s.Contains("timber")) return "timber";
+            if (s.Contains("iron")) return "iron";
+            if (s.Contains("gold")) return "gold";
+            if (s.Contains("soil")) return "soil";
+            if (s.Contains("berry")) return "berry";
+            if (s.Contains("blossom")) return "blossom";
+            if (s.Contains("wicker")) return "wicker";
+            return "granite";
+        }
+
+        public static Material GetEnvironmentMaterial(string matKey)
+        {
+            if (envMaterialCache.TryGetValue(matKey, out var cached) && cached != null)
+            {
+                return cached;
+            }
+
+            var shader = Shader.Find("Standard") ?? Shader.Find("Diffuse");
+            var mat = new Material(shader)
+            {
+                name = $"Mat_Env_{matKey}",
+                color = Color.white
+            };
+
+            string albedoPath = null;
+            string normalPath = null;
+            float metallic = 0.0f;
+            float smoothness = 0.18f;
+            Color tint = Color.white;
+            Color emission = Color.black;
+
+            switch (matKey)
+            {
+                case "dark_stone":
+                    albedoPath = "Textures/Buildings/stone_dark_albedo";
+                    normalPath = "Textures/Buildings/stone_dark_normal";
+                    smoothness = 0.20f;
+                    break;
+                case "stone":
+                    albedoPath = "Textures/Buildings/stone_ashlar_albedo";
+                    normalPath = "Textures/Buildings/stone_ashlar_normal";
+                    smoothness = 0.22f;
+                    break;
+                case "cobble":
+                    albedoPath = "Textures/Buildings/courtyard_cobble_albedo";
+                    normalPath = "Textures/Buildings/courtyard_cobble_normal";
+                    smoothness = 0.18f;
+                    break;
+                case "timber":
+                    albedoPath = "Textures/Buildings/timber_oak_albedo";
+                    normalPath = "Textures/Buildings/timber_oak_normal";
+                    smoothness = 0.20f;
+                    break;
+                case "iron":
+                    albedoPath = "Textures/Buildings/wrought_iron_albedo";
+                    normalPath = "Textures/Buildings/wrought_iron_normal";
+                    metallic = 0.80f;
+                    smoothness = 0.55f;
+                    break;
+                case "soil":
+                    albedoPath = "Textures/Buildings/farm_soil_albedo";
+                    normalPath = "Textures/Buildings/farm_soil_normal";
+                    smoothness = 0.08f;
+                    break;
+                case "window_glow":
+                    albedoPath = "Textures/Buildings/window_glow_albedo";
+                    smoothness = 0.45f;
+                    emission = new Color(1.0f, 0.72f, 0.28f) * 1.15f;
+                    break;
+                case "granite":
+                    albedoPath = "Textures/Environment/granite_rock_albedo";
+                    normalPath = "Textures/Environment/granite_rock_normal";
+                    smoothness = 0.16f;
+                    break;
+                case "gold":
+                    albedoPath = "Textures/Environment/gold_ore_albedo";
+                    normalPath = "Textures/Environment/gold_ore_normal";
+                    metallic = 0.88f;
+                    smoothness = 0.82f;
+                    emission = new Color(0.28f, 0.20f, 0.02f);
+                    break;
+                case "bark_oak":
+                    albedoPath = "Textures/Environment/bark_oak_albedo";
+                    normalPath = "Textures/Environment/bark_oak_normal";
+                    smoothness = 0.12f;
+                    break;
+                case "bark_pine":
+                    albedoPath = "Textures/Environment/bark_pine_albedo";
+                    normalPath = "Textures/Environment/bark_pine_normal";
+                    smoothness = 0.12f;
+                    break;
+                case "foliage_oak":
+                    albedoPath = "Textures/Environment/foliage_oak_albedo";
+                    normalPath = "Textures/Environment/foliage_oak_normal";
+                    smoothness = 0.20f;
+                    break;
+                case "foliage_pine":
+                    albedoPath = "Textures/Environment/foliage_pine_albedo";
+                    normalPath = "Textures/Environment/foliage_pine_normal";
+                    smoothness = 0.18f;
+                    break;
+                case "foliage_berry":
+                    albedoPath = "Textures/Environment/foliage_berry_albedo";
+                    normalPath = "Textures/Environment/foliage_berry_normal";
+                    smoothness = 0.22f;
+                    break;
+                case "berry":
+                    albedoPath = "Textures/Environment/strawberry_albedo";
+                    normalPath = "Textures/Environment/strawberry_normal";
+                    smoothness = 0.48f;
+                    break;
+                case "blossom":
+                    tint = new Color(0.98f, 0.96f, 0.90f);
+                    smoothness = 0.25f;
+                    break;
+                case "wicker":
+                    albedoPath = "Textures/Environment/wicker_basket_albedo";
+                    normalPath = "Textures/Environment/wicker_basket_normal";
+                    smoothness = 0.18f;
+                    break;
+            }
+
+            if (!string.IsNullOrEmpty(albedoPath))
+            {
+                var tex = Resources.Load<Texture2D>(albedoPath);
+                if (tex != null) mat.mainTexture = tex;
+            }
+            mat.color = tint;
+
+            if (shader != null && shader.name == "Standard")
+            {
+                mat.SetFloat("_Metallic", metallic);
+                mat.SetFloat("_Glossiness", smoothness);
+
+                if (!string.IsNullOrEmpty(normalPath))
+                {
+                    var nTex = Resources.Load<Texture2D>(normalPath);
+                    if (nTex != null)
+                    {
+                        mat.EnableKeyword("_NORMALMAP");
+                        mat.SetTexture("_BumpMap", nTex);
+                        mat.SetFloat("_BumpScale", 0.75f);
+                    }
+                }
+
+                if (emission != Color.black && mat.HasProperty("_EmissionColor"))
+                {
+                    mat.EnableKeyword("_EMISSION");
+                    mat.SetColor("_EmissionColor", emission);
+                }
+            }
+
+            envMaterialCache[matKey] = mat;
+            return mat;
+        }
+
+        public static void ApplyEnvironmentMaterials(GameObject root)
+        {
+            if (root == null) return;
+            foreach (var ren in root.GetComponentsInChildren<Renderer>(true))
+            {
+                if (ren == null) continue;
+                var shared = ren.sharedMaterials;
+                if (shared == null || shared.Length <= 1)
+                {
+                    string srcName = (shared != null && shared.Length == 1 && shared[0] != null)
+                        ? $"{ren.gameObject.name}_{shared[0].name}"
+                        : ren.gameObject.name;
+                    ren.sharedMaterial = GetEnvironmentMaterial(ResolveEnvMaterialKey(srcName));
+                }
+                else
+                {
+                    var mats = new Material[shared.Length];
+                    for (int i = 0; i < shared.Length; i++)
+                    {
+                        string slotName = (shared[i] != null) ? shared[i].name : ren.gameObject.name;
+                        mats[i] = GetEnvironmentMaterial(ResolveEnvMaterialKey(slotName));
+                    }
+                    ren.sharedMaterials = mats;
+                }
+            }
+        }
+
         public static RTSResourceSource CreateGoldRock(Vector3 position, int amount = 800)
         {
             var mineRoot = new GameObject("Resource_GoldMine");
-            mineRoot.transform.position = position;
+            mineRoot.transform.position = new Vector3(position.x, 0f, position.z);
             mineRoot.transform.rotation = Quaternion.Euler(0, Random.Range(0, 360), 0);
 
-            // 1. Ana Masif Doğal Kaya Formasyonu (Rocks-Large FBX)
-            GameObject rockPrefab = Resources.Load<GameObject>("Models/rocks-large") ?? Resources.Load<GameObject>("Models/RocksLarge");
-            if (rockPrefab != null)
+            GameObject customGoldPrefab = Resources.Load<GameObject>("Models/Environment/GoldMine");
+            if (customGoldPrefab != null)
             {
-                var baseRock = Object.Instantiate(rockPrefab, mineRoot.transform);
-                baseRock.name = "Rock_Outcrop_Base";
-                baseRock.transform.localPosition = Vector3.zero;
-                baseRock.transform.localRotation = Quaternion.identity;
-                baseRock.transform.localScale = new Vector3(1.7f, 1.5f, 1.7f);
-
-                // Gerçekçi koyu granit/bazalt maden kayası materyali
-                Material rockMat = new Material(Shader.Find("Standard"));
-                rockMat.color = new Color(0.26f, 0.26f, 0.28f);
-                rockMat.SetFloat("_Glossiness", 0.15f);
-
-                foreach (var ren in baseRock.GetComponentsInChildren<Renderer>(true))
-                {
-                    ren.material = rockMat;
-                }
-                foreach (var col in baseRock.GetComponentsInChildren<Collider>(true))
+                var model = Object.Instantiate(customGoldPrefab, mineRoot.transform);
+                model.name = "GoldMine_Model";
+                model.transform.localPosition = Vector3.zero;
+                model.transform.localRotation = Quaternion.identity;
+                model.transform.localScale = Vector3.one;
+                foreach (var col in model.GetComponentsInChildren<Collider>(true))
                 {
                     Object.DestroyImmediate(col);
                 }
+                ApplyEnvironmentMaterials(model);
             }
             else
             {
-                // Güvenli yedek kaya kütlesi
-                var rockFallback = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                Object.DestroyImmediate(rockFallback.GetComponent<Collider>());
-                rockFallback.transform.SetParent(mineRoot.transform, false);
-                rockFallback.transform.localPosition = new Vector3(0, 0.8f, 0);
-                rockFallback.transform.localScale = new Vector3(2.6f, 1.6f, 2.6f);
-                rockFallback.GetComponent<Renderer>().material.color = new Color(0.26f, 0.26f, 0.28f);
-            }
-
-            // 2. Kaya Yüzeylerinden Fışkıran Parlak Altın Damarları & Kristalleri (Gold Ore Veins)
-            Material goldOreMat = new Material(Shader.Find("Standard"));
-            goldOreMat.color = new Color(1.0f, 0.82f, 0.12f); // Parlak asil altın
-            goldOreMat.SetFloat("_Metallic", 0.90f);
-            goldOreMat.SetFloat("_Glossiness", 0.82f);
-            goldOreMat.EnableKeyword("_EMISSION");
-            goldOreMat.SetColor("_EmissionColor", new Color(0.35f, 0.25f, 0.02f)); // Doğal altın parıltısı
-
-            Vector3[] goldNuggetOffsets = new Vector3[]
-            {
-                new Vector3( 0.45f, 0.90f,  0.55f),
-                new Vector3(-0.60f, 0.75f,  0.35f),
-                new Vector3( 0.20f, 1.30f, -0.45f),
-                new Vector3(-0.45f, 0.65f, -0.60f),
-                new Vector3( 0.70f, 0.60f, -0.25f),
-                new Vector3(-0.15f, 1.50f,  0.20f),
-                new Vector3( 0.00f, 1.70f,  0.00f) // Tepe altın doruğu
-            };
-
-            Vector3[] nuggetScales = new Vector3[]
-            {
-                new Vector3(0.55f, 0.80f, 0.55f),
-                new Vector3(0.65f, 0.65f, 0.65f),
-                new Vector3(0.70f, 0.85f, 0.60f),
-                new Vector3(0.50f, 0.70f, 0.50f),
-                new Vector3(0.60f, 0.75f, 0.55f),
-                new Vector3(0.65f, 0.90f, 0.65f),
-                new Vector3(0.75f, 0.95f, 0.75f)
-            };
-
-            for (int i = 0; i < goldNuggetOffsets.Length; i++)
-            {
-                var goldChunk = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                Object.DestroyImmediate(goldChunk.GetComponent<Collider>());
-                goldChunk.name = $"Gold_Vein_{i}";
-                goldChunk.transform.SetParent(mineRoot.transform, false);
-                goldChunk.transform.localPosition = goldNuggetOffsets[i];
-                goldChunk.transform.localRotation = Quaternion.Euler(
-                    Random.Range(20f, 65f),
-                    Random.Range(0f, 360f),
-                    Random.Range(20f, 65f)
-                );
-                goldChunk.transform.localScale = nuggetScales[i];
-                goldChunk.GetComponent<Renderer>().material = goldOreMat;
-            }
-
-            // 3. Maden Çevresi Detayları: Küçük taş parçaları
-            GameObject smallRockPrefab = Resources.Load<GameObject>("Models/rocks-small");
-            if (smallRockPrefab != null)
-            {
-                var sr1 = Object.Instantiate(smallRockPrefab, mineRoot.transform);
-                sr1.transform.localPosition = new Vector3(1.3f, 0, 0.8f);
-                sr1.transform.localScale = Vector3.one * 0.8f;
-                sr1.transform.localRotation = Quaternion.Euler(0, 45f, 0);
-
-                var sr2 = Object.Instantiate(smallRockPrefab, mineRoot.transform);
-                sr2.transform.localPosition = new Vector3(-1.2f, 0, -0.9f);
-                sr2.transform.localScale = Vector3.one * 0.7f;
-                sr2.transform.localRotation = Quaternion.Euler(0, 190f, 0);
-
-                foreach (var col in mineRoot.GetComponentsInChildren<Collider>(true))
+                // Güvenli yedek (Resources/Models/Environment/GoldMine yoksa)
+                GameObject rockPrefab = Resources.Load<GameObject>("Models/rocks-large") ?? Resources.Load<GameObject>("Models/RocksLarge");
+                if (rockPrefab != null)
                 {
-                    Object.DestroyImmediate(col);
+                    var baseRock = Object.Instantiate(rockPrefab, mineRoot.transform);
+                    baseRock.transform.localScale = new Vector3(1.7f, 1.5f, 1.7f);
+                    foreach (var col in baseRock.GetComponentsInChildren<Collider>(true)) Object.DestroyImmediate(col);
                 }
             }
 
-            // 4. Altın Yatağı Sıcak Işıltı Halosu (Subtle Golden Point Light)
+            // 4. Altın Yatağı Sıcak Işıltı Halosu
             var lightGo = new GameObject("Gold_Aura_Light");
             lightGo.transform.SetParent(mineRoot.transform, false);
             lightGo.transform.localPosition = new Vector3(0, 1.2f, 0);
@@ -354,50 +478,37 @@ namespace CSE377.Gameplay
         public static RTSResourceSource CreateBerryBush(Vector3 position, int amount = 600)
         {
             var bushGo = new GameObject("Resource_BerryBush");
-            bushGo.transform.position = position;
+            bushGo.transform.position = new Vector3(position.x, 0f, position.z);
+            bushGo.transform.rotation = Quaternion.Euler(0, Random.Range(0, 360), 0);
 
-            // Ana Çalı Yaprak Gövdesi
-            var foliage = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            Destroy(foliage.GetComponent<Collider>());
-            foliage.transform.SetParent(bushGo.transform, false);
-            foliage.transform.localPosition = new Vector3(0, 0.65f, 0);
-            foliage.transform.localScale = new Vector3(2.4f, 1.4f, 2.4f);
-            var folRen = foliage.GetComponent<Renderer>();
-            folRen.material.color = new Color(0.12f, 0.44f, 0.16f); // Doğal çalı yeşili
-
-            var foliage2 = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            Destroy(foliage2.GetComponent<Collider>());
-            foliage2.transform.SetParent(bushGo.transform, false);
-            foliage2.transform.localPosition = new Vector3(0.35f, 0.95f, -0.25f);
-            foliage2.transform.localScale = new Vector3(1.7f, 1.2f, 1.7f);
-            var folRen2 = foliage2.GetComponent<Renderer>();
-            folRen2.material.color = new Color(0.16f, 0.52f, 0.20f);
-
-            // Kırmızı/Bordo Böğürtlen Meyve Taneleri
-            Vector3[] berryOffsets = new Vector3[]
+            GameObject customBerryPrefab = Resources.Load<GameObject>("Models/Environment/BerryBush");
+            if (customBerryPrefab != null)
             {
-                new Vector3( 0.65f, 0.90f,  0.55f),
-                new Vector3(-0.65f, 0.85f,  0.45f),
-                new Vector3( 0.25f, 1.15f, -0.65f),
-                new Vector3(-0.55f, 0.95f, -0.55f),
-                new Vector3( 0.75f, 0.80f, -0.35f),
-                new Vector3(-0.10f, 1.35f,  0.25f)
-            };
-
-            foreach (var bOffset in berryOffsets)
+                var model = Object.Instantiate(customBerryPrefab, bushGo.transform);
+                model.name = "BerryBush_Model";
+                model.transform.localPosition = Vector3.zero;
+                model.transform.localRotation = Quaternion.identity;
+                model.transform.localScale = Vector3.one;
+                foreach (var col in model.GetComponentsInChildren<Collider>(true))
+                {
+                    Object.DestroyImmediate(col);
+                }
+                ApplyEnvironmentMaterials(model);
+            }
+            else
             {
-                var berry = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                Destroy(berry.GetComponent<Collider>());
-                berry.transform.SetParent(bushGo.transform, false);
-                berry.transform.localPosition = bOffset;
-                berry.transform.localScale = Vector3.one * 0.38f;
-                var bRen = berry.GetComponent<Renderer>();
-                bRen.material.color = new Color(0.88f, 0.12f, 0.22f); // Kırmızı böğürtlen
+                // Güvenli yedek (Resources/Models/Environment/BerryBush yoksa)
+                var foliage = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                Destroy(foliage.GetComponent<Collider>());
+                foliage.transform.SetParent(bushGo.transform, false);
+                foliage.transform.localPosition = new Vector3(0, 0.65f, 0);
+                foliage.transform.localScale = new Vector3(2.4f, 1.4f, 2.4f);
+                foliage.GetComponent<Renderer>().material.color = new Color(0.12f, 0.44f, 0.16f);
             }
 
-            var col = bushGo.AddComponent<BoxCollider>();
-            col.center = new Vector3(0, 0.75f, 0);
-            col.size = new Vector3(2.6f, 1.8f, 2.6f);
+            var colBox = bushGo.AddComponent<BoxCollider>();
+            colBox.center = new Vector3(0, 0.75f, 0);
+            colBox.size = new Vector3(2.6f, 1.8f, 2.6f);
 
             var src = bushGo.AddComponent<RTSResourceSource>();
             src.resourceType = RTSResourceType.Food;

@@ -15,7 +15,7 @@ namespace CSE377.EditorTools
         {
             if (string.IsNullOrEmpty(assetPath)) return;
             string normPath = assetPath.Replace('\\', '/');
-            if (!normPath.Contains("Resources/Textures/Buildings/")) return;
+            if (!normPath.Contains("Resources/Textures/Buildings/") && !normPath.Contains("Resources/Textures/Environment/")) return;
 
             var importer = assetImporter as TextureImporter;
             if (importer == null) return;
@@ -41,7 +41,7 @@ namespace CSE377.EditorTools
         {
             if (string.IsNullOrEmpty(assetPath)) return;
             string normPath = assetPath.Replace('\\', '/');
-            if (!normPath.Contains("Resources/Models/Buildings/")) return;
+            if (!normPath.Contains("Resources/Models/Buildings/") && !normPath.Contains("Resources/Models/Environment/")) return;
 
             var importer = assetImporter as ModelImporter;
             if (importer == null) return;

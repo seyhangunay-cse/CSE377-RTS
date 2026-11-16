@@ -234,6 +234,7 @@ namespace CSE377.Gameplay
 
             // 3. Işıklandırmayı haritaya göre yenile
             EnsureLightingAndEvents();
+            EnsureEnvironmentPrefabsLoaded();
 
             // 4. Harita türüne göre coğrafi oluşumlar
             if (activeMapType == RTSMapType.RiverValley)
@@ -968,7 +969,36 @@ namespace CSE377.Gameplay
             bridgeRoot.transform.SetParent(parent);
             bridgeRoot.transform.position = position;
 
-            // Ortak eskitme taş köprü materyali
+            var customBridgePrefab = Resources.Load<GameObject>("Models/Environment/StoneBridge");
+            if (customBridgePrefab != null)
+            {
+                var bridgeVisual = Instantiate(customBridgePrefab, bridgeRoot.transform);
+                bridgeVisual.name = "StoneBridge_Model";
+                bridgeVisual.transform.localPosition = Vector3.zero;
+                bridgeVisual.transform.localRotation = Quaternion.identity;
+                bridgeVisual.transform.localScale = Vector3.one;
+                foreach (var c in bridgeVisual.GetComponentsInChildren<Collider>(true))
+                {
+                    DestroyImmediate(c);
+                }
+                RTSResourceSource.ApplyEnvironmentMaterials(bridgeVisual);
+                bridgeVisual.AddComponent<RTSFogDiscoverable>();
+
+                // 4 Köşe Fener Işığı
+                CreateBridgeLanternLightOnly(position + new Vector3(-3.45f, 2.85f, -6.50f), bridgeVisual.transform);
+                CreateBridgeLanternLightOnly(position + new Vector3( 3.45f, 2.85f, -6.50f), bridgeVisual.transform);
+                CreateBridgeLanternLightOnly(position + new Vector3(-3.45f, 2.85f,  6.50f), bridgeVisual.transform);
+                CreateBridgeLanternLightOnly(position + new Vector3( 3.45f, 2.85f,  6.50f), bridgeVisual.transform);
+
+                // Görünmez Tetikleyici Tıklama Yüzeyleri (sağ tıkla köprü üstüne/rampasına emir verebilmek için)
+                CreateBridgeTriggerSlab("Bridge_SouthRamp", position + new Vector3(0, 0.42f, -7.8f), Quaternion.Euler(11f, 0, 0), new Vector3(6.8f, 0.45f, 3.8f), bridgeRoot.transform);
+                CreateBridgeTriggerSlab("Bridge_SouthDeck", position + new Vector3(0, 0.88f, -3.25f), Quaternion.identity, new Vector3(6.8f, 0.45f, 6.5f), bridgeRoot.transform);
+                CreateBridgeTriggerSlab("Bridge_NorthDeck", position + new Vector3(0, 0.88f, 3.25f), Quaternion.identity, new Vector3(6.8f, 0.45f, 6.5f), bridgeRoot.transform);
+                CreateBridgeTriggerSlab("Bridge_NorthRamp", position + new Vector3(0, 0.42f, 7.8f), Quaternion.Euler(-11f, 0, 0), new Vector3(6.8f, 0.45f, 3.8f), bridgeRoot.transform);
+                return;
+            }
+
+            // Ortak eskitme taş köprü materyali (Yedek fallback)
             var stoneMat = new Material(Shader.Find("Standard"));
             stoneMat.color = new Color(0.42f, 0.42f, 0.44f); // Orta çağ koyu taş grisi
             stoneMat.SetFloat("_Glossiness", 0.15f);
@@ -1327,6 +1357,31 @@ namespace CSE377.Gameplay
             }
         }
 
+        private void CreateBridgeTriggerSlab(string slabName, Vector3 pos, Quaternion rot, Vector3 scale, Transform parent)
+        {
+            var slab = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            slab.name = slabName;
+            slab.transform.SetParent(parent);
+            slab.transform.position = pos;
+            slab.transform.rotation = rot;
+            slab.transform.localScale = scale;
+            Destroy(slab.GetComponent<Renderer>());
+            var col = slab.GetComponent<Collider>();
+            if (col != null) col.isTrigger = true;
+        }
+
+        private void CreateBridgeLanternLightOnly(Vector3 pos, Transform parent)
+        {
+            var lightGo = new GameObject("LanternLight");
+            lightGo.transform.SetParent(parent);
+            lightGo.transform.position = pos;
+            var l = lightGo.AddComponent<Light>();
+            l.type = LightType.Point;
+            l.color = new Color(1.0f, 0.72f, 0.30f);
+            l.range = 7.5f;
+            l.intensity = 1.6f;
+        }
+
         private void CreateBridgeLantern(Vector3 pos, Transform parent)
         {
             var post = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
@@ -1352,17 +1407,36 @@ namespace CSE377.Gameplay
             shallowGo.transform.SetParent(parent);
             shallowGo.transform.position = position;
 
-            var shallowMat = new Material(Shader.Find("Standard"));
-            shallowMat.color = new Color(0.52f, 0.50f, 0.46f); // Doğal ırmak çakıl taşı
-
-            for (int i = -3; i <= 3; i++)
+            var riverRockPrefab = Resources.Load<GameObject>("Models/Environment/RiverRock");
+            if (riverRockPrefab != null)
             {
-                var stone = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                stone.transform.SetParent(shallowGo.transform);
-                stone.transform.position = position + new Vector3(i * 1.4f, 0.075f, Random.Range(-0.6f, 0.6f));
-                stone.transform.localScale = new Vector3(1.2f, 0.14f, 8.8f);
-                stone.GetComponent<Renderer>().material = shallowMat;
-                Destroy(stone.GetComponent<Collider>());
+                for (int i = -3; i <= 3; i++)
+                {
+                    for (int row = -1; row <= 1; row++)
+                    {
+                        var rock = Instantiate(riverRockPrefab, shallowGo.transform);
+                        rock.transform.position = position + new Vector3(i * 1.15f + row * 0.25f, 0.02f, row * 2.8f + Random.Range(-0.5f, 0.5f));
+                        rock.transform.rotation = Quaternion.Euler(0, Random.Range(0, 360), 0);
+                        rock.transform.localScale = new Vector3(1.5f, 0.42f, 1.9f);
+                        foreach (var c in rock.GetComponentsInChildren<Collider>(true)) DestroyImmediate(c);
+                        RTSResourceSource.ApplyEnvironmentMaterials(rock);
+                    }
+                }
+            }
+            else
+            {
+                var shallowMat = new Material(Shader.Find("Standard"));
+                shallowMat.color = new Color(0.52f, 0.50f, 0.46f);
+
+                for (int i = -3; i <= 3; i++)
+                {
+                    var stone = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    stone.transform.SetParent(shallowGo.transform);
+                    stone.transform.position = position + new Vector3(i * 1.4f, 0.075f, Random.Range(-0.6f, 0.6f));
+                    stone.transform.localScale = new Vector3(1.2f, 0.14f, 8.8f);
+                    stone.GetComponent<Renderer>().material = shallowMat;
+                    Destroy(stone.GetComponent<Collider>());
+                }
             }
 
             // Savaş sisi entegrasyonu: Sığlık taşları keşfedilene kadar gizli kalır
@@ -1375,24 +1449,40 @@ namespace CSE377.Gameplay
         private GameObject rockLargePrefab;
         private GameObject rockSmallPrefab;
 
-        private void SpawnDenseForests()
+        private void EnsureEnvironmentPrefabsLoaded()
         {
-            var pTreeLarge = Resources.Load<GameObject>("Models/tree-large");
-            var pTreeSmall = Resources.Load<GameObject>("Models/tree-small");
-            var pTree = Resources.Load<GameObject>("Models/Tree");
-            var pTreeL = Resources.Load<GameObject>("Models/TreeLarge");
+            if (treePrefabs != null && treePrefabs.Length > 0) return;
 
+            var pOak = Resources.Load<GameObject>("Models/Environment/OakTree");
+            var pPine = Resources.Load<GameObject>("Models/Environment/PineTree");
             var tList = new System.Collections.Generic.List<GameObject>();
-            if (pTreeLarge != null) tList.Add(pTreeLarge);
-            if (pTreeSmall != null) tList.Add(pTreeSmall);
-            if (pTree != null) tList.Add(pTree);
-            if (pTreeL != null) tList.Add(pTreeL);
+            if (pOak != null) tList.Add(pOak);
+            if (pPine != null) tList.Add(pPine);
+
+            if (tList.Count == 0)
+            {
+                var pTreeLarge = Resources.Load<GameObject>("Models/tree-large");
+                var pTreeSmall = Resources.Load<GameObject>("Models/tree-small");
+                var pTree = Resources.Load<GameObject>("Models/Tree");
+                var pTreeL = Resources.Load<GameObject>("Models/TreeLarge");
+                if (pTreeLarge != null) tList.Add(pTreeLarge);
+                if (pTreeSmall != null) tList.Add(pTreeSmall);
+                if (pTree != null) tList.Add(pTree);
+                if (pTreeL != null) tList.Add(pTreeL);
+            }
             treePrefabs = tList.ToArray();
 
             fallenLogPrefab = Resources.Load<GameObject>("Models/tree-log");
             treeTrunkPrefab = Resources.Load<GameObject>("Models/tree-trunk");
-            rockLargePrefab = Resources.Load<GameObject>("Models/rocks-large") ?? Resources.Load<GameObject>("Models/RocksLarge");
+            rockLargePrefab = Resources.Load<GameObject>("Models/Environment/RiverRock")
+                           ?? Resources.Load<GameObject>("Models/rocks-large")
+                           ?? Resources.Load<GameObject>("Models/RocksLarge");
             rockSmallPrefab = Resources.Load<GameObject>("Models/rocks-small");
+        }
+
+        private void SpawnDenseForests()
+        {
+            EnsureEnvironmentPrefabsLoaded();
 
             var treePrefab = (treePrefabs != null && treePrefabs.Length > 0) ? treePrefabs[0] : null;
             if (treePrefab == null) return;
@@ -1474,6 +1564,11 @@ namespace CSE377.Gameplay
             var tree = Instantiate(prefabToUse, pos, Quaternion.Euler(0, Random.Range(0, 360), 0), parent);
             tree.transform.localScale = Vector3.one * Random.Range(1.8f, 2.7f);
 
+            if (prefabToUse.name.Contains("OakTree") || prefabToUse.name.Contains("PineTree"))
+            {
+                RTSResourceSource.ApplyEnvironmentMaterials(tree);
+            }
+
             // Ağaç 3D modelindeki devasa yaprak/dal mesh collider'larını temizle (köylülerin yapraklara takılmasını önler)
             foreach (var col in tree.GetComponentsInChildren<Collider>(true))
             {
@@ -1535,6 +1630,11 @@ namespace CSE377.Gameplay
                         var pos = center + new Vector3(Random.Range(-2.5f, 2.5f), 0, Random.Range(-2.2f, 2.2f));
                         var rock = Instantiate(rockLargePrefab, pos, Quaternion.Euler(Random.Range(-10, 10), Random.Range(0, 360), Random.Range(-10, 10)), envRoot.transform);
                         rock.transform.localScale = Vector3.one * Random.Range(1.8f, 2.5f);
+                        if (rockLargePrefab.name.Contains("RiverRock"))
+                        {
+                            foreach (var c in rock.GetComponentsInChildren<Collider>(true)) DestroyImmediate(c);
+                            RTSResourceSource.ApplyEnvironmentMaterials(rock);
+                        }
                         rock.AddComponent<RTSFogDiscoverable>();
                     }
                 }
