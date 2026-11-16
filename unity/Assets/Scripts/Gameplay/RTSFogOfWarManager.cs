@@ -141,16 +141,14 @@ namespace CSE377.Gameplay
 
         private void UpdateFogGridAndEnemies()
         {
-            bool isMp = RTSGameManager.IsMultiplayerPvP || (RTSNetworkSyncManager.Instance != null && RTSNetworkSyncManager.Instance.isMultiplayerMode);
-
             // 1. Bilinear Sis Dokusunu ve Hücre Durumlarını Güncelle
             if (cellStates != null && fogPixels != null)
             {
                 float cellSize = mapSize / gridResolution;
                 float startOffset = -mapSize * 0.5f + cellSize * 0.5f;
 
-                Color32 unexpColor32 = isMp ? (Color32)new Color(0.03f, 0.04f, 0.06f, 0.16f) : (Color32)unexploredColor;
-                Color32 expColor32 = isMp ? (Color32)new Color(0.03f, 0.04f, 0.06f, 0.10f) : (Color32)exploredColor;
+                Color32 unexpColor32 = unexploredColor;
+                Color32 expColor32 = exploredColor;
                 Color32 visColor32 = visibleColor;
 
                 for (int z = 0; z < gridResolution; z++)
@@ -170,7 +168,7 @@ namespace CSE377.Gameplay
                         if (isMapEdgeAbyss)
                         {
                             cellStates[x, z] = FogCellState.Unexplored;
-                            fogPixels[pIdx] = unexploredColor;
+                            fogPixels[pIdx] = unexpColor32;
                         }
                         else if (isCurrentlyVisible)
                         {
@@ -206,7 +204,7 @@ namespace CSE377.Gameplay
             {
                 if (unit == null) continue;
 
-                if (unit.team == localTeam || isMp)
+                if (unit.team == localTeam)
                 {
                     if (!unit.isFogVisible)
                     {
@@ -231,45 +229,31 @@ namespace CSE377.Gameplay
             }
 
             // 3. Doğal Kaynaklar (Altın Madenleri ve Ağaçlar)
+            // Keşfedilmemiş alandaki kaynaklar gizlenir; keşfedilip uzaklaşıldığında (Explored) gri/silik görünür, aktif görüşte (Visible) parlak görünür
             foreach (var res in RTSResourceSource.AllSources)
             {
                 if (res != null)
                 {
-                    if (isMp)
+                    var state = GetCellStateAtWorldPos(res.transform.position);
+                    res.SetFogVisibility(state != FogCellState.Unexplored);
+                    if (res.isDiscovered)
                     {
-                        res.SetFogVisibility(true);
-                        res.SetShroudDimmed(false);
-                    }
-                    else
-                    {
-                        var state = GetCellStateAtWorldPos(res.transform.position);
-                        res.SetFogVisibility(state != FogCellState.Unexplored);
-                        if (res.isDiscovered)
-                        {
-                            res.SetShroudDimmed(state != FogCellState.Visible);
-                        }
+                        res.SetShroudDimmed(state != FogCellState.Visible);
                     }
                 }
             }
 
             // 4. Statik Yapılar ve Düşman Binaları
+            // Sis altındayken gizlenir, keşfedildiğinde açılır; aktif görüş dışındayken (Explored) gri/silik görünür
             foreach (var disc in RTSFogDiscoverable.AllDiscoverables)
             {
                 if (disc != null)
                 {
-                    if (isMp)
+                    var state = GetCellStateAtWorldPos(disc.transform.position);
+                    disc.SetDiscovered(state != FogCellState.Unexplored);
+                    if (disc.isDiscovered)
                     {
-                        disc.SetDiscovered(true);
-                        disc.SetShroudDimmed(false);
-                    }
-                    else
-                    {
-                        var state = GetCellStateAtWorldPos(disc.transform.position);
-                        disc.SetDiscovered(state != FogCellState.Unexplored);
-                        if (disc.isDiscovered)
-                        {
-                            disc.SetShroudDimmed(state != FogCellState.Visible);
-                        }
+                        disc.SetShroudDimmed(state != FogCellState.Visible);
                     }
                 }
             }

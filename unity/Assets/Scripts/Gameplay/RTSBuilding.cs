@@ -1397,26 +1397,40 @@ namespace CSE377.Gameplay
         }
 
         /// <summary>
-        /// Yerel oyuncunun takımına (Mavi veya Kırmızı) göre binanın 3D görünürlüğünü günceller.
-        /// Yapılan tüm yeni inşaatların her iki oyuncunun ekranında da anında görünmesi için bina modelleri daima aktif tutulur.
+        /// Yerel oyuncunun takımına (Mavi veya Kırmızı) göre binanın Savaş Sisi (Fog-of-War) görünürlüğünü günceller.
+        /// Dost binalar her zaman tam görünür; rakip binalar sis altında gizlenir ve keşfedildiğinde açılır.
         /// </summary>
         public void RefreshFogPerspective()
         {
             var disc = gameObject.GetComponent<RTSFogDiscoverable>();
-            if (disc != null)
+            if (team == RTSGameManager.LocalPlayerTeam)
             {
-                disc.SetDiscovered(true);
-                disc.SetShroudDimmed(false);
-                RTSFogDiscoverable.AllDiscoverables.Remove(disc);
-                DestroyImmediate(disc);
+                if (disc != null)
+                {
+                    disc.SetDiscovered(true);
+                    disc.SetShroudDimmed(false);
+                    RTSFogDiscoverable.AllDiscoverables.Remove(disc);
+                    DestroyImmediate(disc);
+                }
+                foreach (var r in GetComponentsInChildren<Renderer>(true))
+                {
+                    if (r != null) r.enabled = true;
+                }
+                foreach (var l in GetComponentsInChildren<Light>(true))
+                {
+                    if (l != null) l.enabled = true;
+                }
             }
-            foreach (var r in GetComponentsInChildren<Renderer>(true))
+            else
             {
-                if (r != null) r.enabled = true;
-            }
-            foreach (var l in GetComponentsInChildren<Light>(true))
-            {
-                if (l != null) l.enabled = true;
+                if (disc == null)
+                {
+                    disc = gameObject.AddComponent<RTSFogDiscoverable>();
+                }
+                bool vis = RTSFogOfWarManager.Instance != null
+                    && (RTSFogOfWarManager.Instance.IsBuildingVisible(this)
+                        || RTSFogOfWarManager.Instance.GetCellStateAtWorldPos(transform.position) != FogCellState.Unexplored);
+                disc.ApplyVisibility(vis);
             }
         }
     }

@@ -64,6 +64,15 @@ namespace CSE377.Gameplay
             {
                 ApplyVisibility(discovered);
             }
+            else
+            {
+                // Sonradan eklenen inşaat iskelesi (RTSConstructionScaffold) gibi alt parçaların da mevcut görünürlükle senkron kalmasını sağla
+                var currentRenderers = GetComponentsInChildren<Renderer>(true);
+                if (currentRenderers != null && (cachedRenderers == null || currentRenderers.Length != cachedRenderers.Length))
+                {
+                    ApplyVisibility(isDiscovered);
+                }
+            }
         }
 
         public void ApplyVisibility(bool visible)

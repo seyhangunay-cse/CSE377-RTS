@@ -168,15 +168,14 @@ namespace CSE377.Gameplay
 
             var fow = RTSFogOfWarManager.Instance;
 
-            bool isMp = RTSGameManager.IsMultiplayerPvP || (RTSNetworkSyncManager.Instance != null && RTSNetworkSyncManager.Instance.isMultiplayerMode);
-
             // 4. Doğal Kaynaklar (Altın Madenleri)
+            // YALNIZCA keşfedilmiş alanlardaki kaynaklar mini-haritada çizilir!
             foreach (var res in RTSResourceSource.AllSources)
             {
                 if (res != null && res.resourceType == RTSResourceType.Gold)
                 {
                     Vector3 pos = res.transform.position;
-                    if (isMp || fow == null || fow.GetCellStateAtWorldPos(pos) != FogCellState.Unexplored)
+                    if (fow == null || fow.GetCellStateAtWorldPos(pos) != FogCellState.Unexplored)
                     {
                         DrawWorldBlock(new Vector2(pos.x, pos.z), goldNodeColor, 3);
                     }
@@ -184,13 +183,14 @@ namespace CSE377.Gameplay
             }
 
             // 5. Binalar (Şehir Merkezi, Kale, Kışla, Kule, Demirci, Ev, Tarla)
+            // Dost binalar her zaman, rakip binaları yalnızca keşfedildiyse çizilir
             UnitTeam myTeam = RTSGameManager.LocalPlayerTeam;
             foreach (var b in RTSBuilding.AllBuildings)
             {
                 if (b != null && b.currentHp > 0)
                 {
                     Vector3 bPos = b.transform.position;
-                    if (isMp || b.team == myTeam || fow == null || fow.GetCellStateAtWorldPos(bPos) != FogCellState.Unexplored)
+                    if (b.team == myTeam || fow == null || fow.GetCellStateAtWorldPos(bPos) != FogCellState.Unexplored)
                     {
                         Color32 bCol = buildingColorByType(b);
                         int bSize = (b.buildingType == RTSBuildingType.TownCenter || b.buildingType == RTSBuildingType.Castle || b.buildingType == RTSBuildingType.SiegeWorkshop) ? 5 :
@@ -206,12 +206,14 @@ namespace CSE377.Gameplay
                 if (u != null && u.currentHp > 0)
                 {
                     Color32 unitDotColor = (u.team == UnitTeam.Player) ? playerUnitColor : enemyUnitColor;
-                    if (isMp || u.team == myTeam)
+                    if (u.team == myTeam)
                     {
+                        // Dost birimler her zaman görünür
                         DrawWorldDot(new Vector2(u.transform.position.x, u.transform.position.z), unitDotColor, 1);
                     }
                     else
                     {
+                        // Rakip birimler yalnızca görüş alanındaysa çizilir (Hile Koruması)
                         bool visible = (RTSFogOfWarManager.Instance != null)
                             ? RTSFogOfWarManager.Instance.IsUnitVisible(u)
                             : true;
