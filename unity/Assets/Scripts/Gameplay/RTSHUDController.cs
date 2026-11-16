@@ -1285,6 +1285,11 @@ namespace CSE377.Gameplay
             RTSSelectionManager.Instance?.CancelBuildingPlacement();
             RTSSelectionManager.Instance?.DeselectAll();
 
+            if (RTSNetworkSyncManager.Instance != null && RTSNetworkSyncManager.Instance.isMultiplayerMode)
+            {
+                RTSNetworkSyncManager.Instance.SetSinglePlayerMode();
+            }
+
             RTSAudioManager.Instance?.ResetCombatAudio();
             RTSAutoBootstrap.Instance?.RebuildMapForSelectedType();
             gameManager?.ResetEconomyForNewMatch();

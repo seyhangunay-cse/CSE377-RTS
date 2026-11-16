@@ -584,6 +584,14 @@ namespace CSE377.Gameplay
             scoutFocus = "";
         }
 
+        public void StopMovementFromNetwork()
+        {
+            moveWaypoints.Clear();
+            isMoving = false;
+            commandDestination = Vector3.zero;
+            targetDestination = transform.position;
+        }
+
         private void PickNextScoutDestination()
         {
             if (RTSFogOfWarManager.Instance != null)

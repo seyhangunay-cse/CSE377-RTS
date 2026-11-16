@@ -87,6 +87,7 @@ namespace CSE377.Gameplay
         private float nextLiveWorldSyncTime = 0f;
         private float lastRemoteHeartbeatTime = -999f;
         private bool hasLaunchedCurrentRoomMatch = false;
+        private long roomConnectUtcTicks = 0;
         private readonly ConcurrentQueue<string> incomingPackets = new ConcurrentQueue<string>();
         private readonly List<RoomListingInfo> activeOpenRooms = new List<RoomListingInfo>();
         private readonly HashSet<string> processedPacketIds = new HashSet<string>();
@@ -442,6 +443,8 @@ namespace CSE377.Gameplay
             isRoomConnected = true;
             hasLaunchedCurrentRoomMatch = false;
             enableRivalAi = false;
+            roomConnectUtcTicks = DateTime.UtcNow.Ticks;
+            processedPacketIds.Clear();
 
             try
             {
@@ -826,6 +829,7 @@ namespace CSE377.Gameplay
                 {
                     var pkt = log.packets[i];
                     if (pkt == null || pkt.room != matchRoomId) continue;
+                    if (pkt.sentTicks > 0 && pkt.sentTicks < roomConnectUtcTicks) continue;
                     if (!string.IsNullOrEmpty(pkt.senderInstanceId) && pkt.senderInstanceId == clientInstanceId) continue;
                     if (!string.IsNullOrEmpty(pkt.packetId) && processedPacketIds.Contains(pkt.packetId)) continue;
                     ProcessParsedPacket(pkt);
@@ -1326,6 +1330,10 @@ namespace CSE377.Gameplay
                             }
 
                             float posDiff = Vector2.Distance(new Vector2(match.transform.position.x, match.transform.position.z), new Vector2(px, pz));
+                            if (!isMov && match.isMoving && posDiff < 1.5f)
+                            {
+                                match.StopMovementFromNetwork();
+                            }
                             if (posDiff > 2.2f)
                             {
                                 match.transform.position = new Vector3(px, match.transform.position.y, pz);
