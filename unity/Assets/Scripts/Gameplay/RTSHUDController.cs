@@ -1599,7 +1599,10 @@ namespace CSE377.Gameplay
                                               (b.buildingType == RTSBuildingType.Farm) ? "Buğday Tarlası (Gıda)" :
                                               (b.buildingType == RTSBuildingType.StoneWall) ? "Taş Savunma Duvarı" :
                                               (b.buildingType == RTSBuildingType.CityGate) ? "Şehir ve Kale Kapısı" :
-                                              (b.buildingType == RTSBuildingType.Castle) ? "Şanlı İmparatorluk Kalesi" : "Demirci Atölyesi";
+                                              (b.buildingType == RTSBuildingType.Castle) ? "Şanlı İmparatorluk Kalesi" :
+                                              (b.buildingType == RTSBuildingType.ArcheryRange) ? "Okçu Talimgâhı (Menzilli)" :
+                                              (b.buildingType == RTSBuildingType.SiegeWorkshop) ? "Kuşatma Atölyesi (Mancınık)" :
+                                              (b.buildingType == RTSBuildingType.Market) ? "Pazar Yeri (Ticaret)" : "Demirci Atölyesi";
                 }
 
                 if (inspectorSubtitleText != null)
@@ -2154,11 +2157,10 @@ namespace CSE377.Gameplay
             bool isFeudalOrHigher = (techMgr != null && techMgr.currentAge >= RTSAge.FeudalAge);
             bool isCastleAge = (techMgr != null && techMgr.currentAge >= RTSAge.CastleAge);
 
-            // Sayfa 0: Temel & Ekonomi (Ekonomi & Barınma)
             // Sayfa 0: Temel Ekonomi, Nüfus & Ticaret Binaları
             if (villagerBuildPage == 0)
             {
-                if (actionPanelTitle != null) actionPanelTitle.text = "KÖYLÜ İNŞAAT - TEMEL VE EKONOMİ YAPILARI (Sayfa 1/2)";
+                if (actionPanelTitle != null) actionPanelTitle.text = "KÖYLÜ İNŞAAT - TEMEL VE EKONOMİ YAPILARI (Sayfa 1/3)";
 
                 SetupActionButton(actionBtn1, actionBtn1Text, "Tarla\n60 Odun", true, () =>
                 {
@@ -2180,16 +2182,16 @@ namespace CSE377.Gameplay
                     RTSSelectionManager.Instance?.StartBuildingPlacement(RTSBuildingType.Market);
                 });
 
-                SetupActionButton(actionBtn5, actionBtn5Text, "Askeri >>\n(Sayfa 2/2)", true, () =>
+                SetupActionButton(actionBtn5, actionBtn5Text, "Askeri >>\n(Sayfa 2/3)", true, () =>
                 {
                     villagerBuildPage = 1;
                     ShowVillagerBuildMenu();
                 });
             }
             // Sayfa 1: Askeri & Kuşatma Kışlaları
-            else
+            else if (villagerBuildPage == 1)
             {
-                if (actionPanelTitle != null) actionPanelTitle.text = "KÖYLÜ İNŞAAT - ASKERİ KIŞLA VE KUŞATMA (Sayfa 2/2)";
+                if (actionPanelTitle != null) actionPanelTitle.text = "KÖYLÜ İNŞAAT - ASKERİ KIŞLA VE KUŞATMA (Sayfa 2/3)";
 
                 SetupActionButton(actionBtn1, actionBtn1Text, "Kışla\n150 Odun", true, () =>
                 {
@@ -2213,7 +2215,40 @@ namespace CSE377.Gameplay
                     RTSSelectionManager.Instance?.StartBuildingPlacement(RTSBuildingType.Castle);
                 });
 
-                SetupActionButton(actionBtn5, actionBtn5Text, "<< Ekonomi\n(Sayfa 1/2)", true, () =>
+                SetupActionButton(actionBtn5, actionBtn5Text, "Savunma >>\n(Sayfa 3/3)", true, () =>
+                {
+                    villagerBuildPage = 2;
+                    ShowVillagerBuildMenu();
+                });
+            }
+            // Sayfa 2: Savunma Kulesi, Sur, Kapı ve Ek Şehir Merkezi
+            else
+            {
+                if (actionPanelTitle != null) actionPanelTitle.text = "KÖYLÜ İNŞAAT - SAVUNMA VE TAHKİMAT (Sayfa 3/3)";
+
+                string towerLabel = isFeudalOrHigher ? "Savunma Kulesi\n125O, 50A" : "Savunma Kulesi\n(Feodal Çağ)";
+                SetupActionButton(actionBtn1, actionBtn1Text, towerLabel, isFeudalOrHigher, () =>
+                {
+                    RTSSelectionManager.Instance?.StartBuildingPlacement(RTSBuildingType.DefenseTower);
+                });
+
+                SetupActionButton(actionBtn2, actionBtn2Text, "Taş Duvar\n20O, 10A", true, () =>
+                {
+                    RTSSelectionManager.Instance?.StartBuildingPlacement(RTSBuildingType.StoneWall);
+                });
+
+                SetupActionButton(actionBtn3, actionBtn3Text, "Şehir Kapısı\n50O, 20A", true, () =>
+                {
+                    RTSSelectionManager.Instance?.StartBuildingPlacement(RTSBuildingType.CityGate);
+                });
+
+                string tcLabel = isCastleAge ? "Şehir Merkezi\n350O, 100A" : "Şehir Merkezi\n(Kale Çağı)";
+                SetupActionButton(actionBtn4, actionBtn4Text, tcLabel, isCastleAge, () =>
+                {
+                    RTSSelectionManager.Instance?.StartBuildingPlacement(RTSBuildingType.TownCenter);
+                });
+
+                SetupActionButton(actionBtn5, actionBtn5Text, "<< Ekonomi\n(Sayfa 1/3)", true, () =>
                 {
                     villagerBuildPage = 0;
                     ShowVillagerBuildMenu();

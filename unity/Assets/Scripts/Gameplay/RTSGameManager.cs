@@ -22,9 +22,9 @@ namespace CSE377.Gameplay
         public static bool IsMultiplayerPvP = false;
 
         [Header("Oyuncu Kaynakları")]
-        public int wood = 200;
-        public int food = 200;
-        public int gold = 100;
+        public int wood = 650;
+        public int food = 400;
+        public int gold = 250;
 
         [Header("Maç İstatistikleri")]
         public int totalWoodGathered = 0;
@@ -127,9 +127,9 @@ namespace CSE377.Gameplay
 
         public void ResetEconomyForNewMatch()
         {
-            wood = 450;
-            food = 200;
-            gold = 150;
+            wood = 650;
+            food = 400;
+            gold = 250;
             currentRaidWave = 0;
             enemiesKilled = 0;
             unitsLost = 0;

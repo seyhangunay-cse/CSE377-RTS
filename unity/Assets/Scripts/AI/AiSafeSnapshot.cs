@@ -26,7 +26,7 @@ namespace CSE377.AI
             public int food;
             public int gold;
 
-            public ResourceState(int wood = 450, int food = 200, int gold = 150)
+            public ResourceState(int wood = 650, int food = 400, int gold = 250)
             {
                 this.wood = wood;
                 this.food = food;
