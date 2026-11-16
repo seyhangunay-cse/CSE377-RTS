@@ -61,6 +61,8 @@ namespace CSE377.Gameplay
 
         [Header("3D Animasyon ve Görsel")]
         public Transform visualChild;
+        private RTSUnitRig unitRig;
+        private float workAnimActiveUntil = -1f;
         private Animator unitAnimator;
         private PlayableGraph playableGraph;
         private AnimationClip currentPlayingClip;
@@ -170,6 +172,7 @@ namespace CSE377.Gameplay
             }
 
             unitAnimator = GetComponentInChildren<Animator>();
+            unitRig = GetComponentInChildren<RTSUnitRig>(true);
             LoadClipsIfNeeded();
 
             if (GetComponent<Collider>() == null)
@@ -991,6 +994,9 @@ namespace CSE377.Gameplay
                             visualChild.localPosition = new Vector3(0, stepBounce, 0);
                             visualChild.localRotation = Quaternion.Euler(0, 0, sway);
                         }
+
+                        if (unitRig == null) unitRig = GetComponentInChildren<RTSUnitRig>(true);
+                        unitRig?.AnimateMove(walkCycleTime, isAttackingAnimPlaying);
                     }
 
                     // Sıkışma kontrolü ve akıllı engelden sıyrılma (Stuck Recovery)
@@ -1101,6 +1107,24 @@ namespace CSE377.Gameplay
                     }
                 }
             }
+            else if (!isAttackingAnimPlaying && Time.time > workAnimActiveUntil)
+            {
+                if (unitRig == null) unitRig = GetComponentInChildren<RTSUnitRig>(true);
+                unitRig?.ResetToRest(Time.deltaTime * 10f);
+            }
+        }
+
+        public void AnimateWorkSwing(float phase)
+        {
+            if (isDead || isMoving || isAttackingAnimPlaying) return;
+            workAnimActiveUntil = Time.time + 0.12f;
+            if (unitRig == null) unitRig = GetComponentInChildren<RTSUnitRig>(true);
+            if (unitRig == null) return;
+
+            float wave = Mathf.Sin(phase);
+            float armX = Mathf.Lerp(-68f, 18f, wave * 0.5f + 0.5f);
+            if (unitRig.rightArm != null) unitRig.rightArm.localRotation = Quaternion.Euler(armX, 0f, 0f);
+            if (unitRig.torso != null) unitRig.torso.localRotation = Quaternion.Euler(8f + wave * 6f, 0f, 0f);
         }
 
         private Vector3 GetSeparationVector()
@@ -1617,6 +1641,13 @@ namespace CSE377.Gameplay
         /// </summary>
         public void ApplyTeamVisuals()
         {
+            if (unitRig == null) unitRig = GetComponentInChildren<RTSUnitRig>(true);
+            if (unitRig != null)
+            {
+                RTSUnitVisuals.ApplyUnitMaterials(unitRig.gameObject, team);
+                return;
+            }
+
             Color teamColor = (team == UnitTeam.Player) 
                 ? new Color(0.12f, 0.45f, 0.95f) 
                 : new Color(0.92f, 0.15f, 0.15f);
@@ -1810,6 +1841,8 @@ namespace CSE377.Gameplay
             float elapsed = 0f;
             string t = (unitType ?? "").ToLower();
 
+            if (unitRig == null) unitRig = GetComponentInChildren<RTSUnitRig>(true);
+
             if (t == "spearman")
             {
                 // Mızrakçı: Hızlı ve seri delici saplama hamlesi (Rapid Forward Thrust)
@@ -1825,12 +1858,17 @@ namespace CSE377.Gameplay
                         visualChild.localPosition = new Vector3(0, 0, fwd);
                         visualChild.localRotation = Quaternion.Euler(pitch, 0, 0);
                     }
+                    if (unitRig != null && unitRig.rightArm != null)
+                    {
+                        float armRot = (p < 0.4f) ? Mathf.Lerp(0f, -52f, p / 0.4f) : Mathf.Lerp(-52f, 0f, (p - 0.4f) / 0.6f);
+                        unitRig.rightArm.localRotation = Quaternion.Euler(armRot, 0f, 0f);
+                    }
                     yield return null;
                 }
             }
-            else if (t == "cavalry")
+            else if (t == "cavalry" || t == "scout")
             {
-                // Süvari: Şahlanma, toynak indirme ve kargı hücumu (Cavalry Rear & Lance Thrust)
+                // Süvari / İzci: Şahlanma, toynak indirme ve kargı/mızrak hücumu
                 float cavDuration = 0.32f;
                 while (elapsed < cavDuration && !isDead)
                 {
@@ -1843,6 +1881,11 @@ namespace CSE377.Gameplay
                     {
                         visualChild.localPosition = new Vector3(0, hop, fwd);
                         visualChild.localRotation = Quaternion.Euler(pitch, 0, 0);
+                    }
+                    if (unitRig != null && unitRig.rightArm != null)
+                    {
+                        float lanceX = (p < 0.35f) ? Mathf.Lerp(0f, 22f, p / 0.35f) : Mathf.Lerp(22f, -45f, (p - 0.35f) / 0.65f);
+                        unitRig.rightArm.localRotation = Quaternion.Euler(lanceX, 0f, 0f);
                     }
                     yield return null;
                 }
@@ -1864,6 +1907,11 @@ namespace CSE377.Gameplay
                         visualChild.localPosition = new Vector3(0, 0, fwd);
                         visualChild.localRotation = Quaternion.Euler(pitch, yaw, roll);
                     }
+                    if (unitRig != null && unitRig.rightArm != null)
+                    {
+                        float swingX = (p < 0.35f) ? Mathf.Lerp(0f, -72f, p / 0.35f) : Mathf.Lerp(-72f, 24f, (p - 0.35f) / 0.65f);
+                        unitRig.rightArm.localRotation = Quaternion.Euler(swingX, -15f * Mathf.Sin(p * Mathf.PI), 0f);
+                    }
                     yield return null;
                 }
             }
@@ -1882,6 +1930,11 @@ namespace CSE377.Gameplay
                         visualChild.localPosition = new Vector3(0, 0, fwd);
                         visualChild.localRotation = Quaternion.Euler(pitch, 0, 0);
                     }
+                    if (unitRig != null && unitRig.rightArm != null)
+                    {
+                        float chopX = (p < 0.3f) ? Mathf.Lerp(0f, -70f, p / 0.3f) : Mathf.Lerp(-70f, 25f, (p - 0.3f) / 0.7f);
+                        unitRig.rightArm.localRotation = Quaternion.Euler(chopX, 0f, 0f);
+                    }
                     yield return null;
                 }
             }
@@ -1891,12 +1944,14 @@ namespace CSE377.Gameplay
                 visualChild.localPosition = Vector3.zero;
                 visualChild.localRotation = Quaternion.identity;
             }
+            unitRig?.ResetToRest(1f);
             isAttackingAnimPlaying = false;
         }
 
         private IEnumerator RangedRecoilCoroutine()
         {
             if (visualChild == null || isDead) yield break;
+            if (unitRig == null) unitRig = GetComponentInChildren<RTSUnitRig>(true);
             isAttackingAnimPlaying = true;
             float elapsed = 0f;
             float duration = 0.28f;
@@ -1913,6 +1968,12 @@ namespace CSE377.Gameplay
                     visualChild.localPosition = new Vector3(0, 0, fwd);
                     visualChild.localRotation = Quaternion.Euler(pitch, 0, 0);
                 }
+                if (unitRig != null)
+                {
+                    float drawAngle = (p < 0.35f) ? Mathf.Lerp(-12f, -28f, p / 0.35f) : Mathf.Lerp(-28f, 0f, (p - 0.35f) / 0.65f);
+                    if (unitRig.rightArm != null) unitRig.rightArm.localRotation = Quaternion.Euler(drawAngle, 0f, 0f);
+                    if (unitRig.leftArm != null) unitRig.leftArm.localRotation = Quaternion.Euler(drawAngle * 0.65f, 0f, 0f);
+                }
                 yield return null;
             }
 
@@ -1921,34 +1982,47 @@ namespace CSE377.Gameplay
                 visualChild.localPosition = Vector3.zero;
                 visualChild.localRotation = Quaternion.identity;
             }
+            unitRig?.ResetToRest(1f);
             isAttackingAnimPlaying = false;
         }
 
         private IEnumerator TrebuchetLaunchCoroutine()
         {
             if (visualChild == null || isDead) yield break;
+            if (unitRig == null) unitRig = GetComponentInChildren<RTSUnitRig>(true);
             isAttackingAnimPlaying = true;
             float elapsed = 0f;
-            float duration = 0.55f;
+            float duration = 0.65f;
 
             while (elapsed < duration && !isDead)
             {
                 elapsed += Time.deltaTime;
                 float p = elapsed / duration;
-                // Ağır karşı ağırlık düşüşü ve şasi öne yatışı
-                float pitch = (p < 0.25f) 
-                    ? Mathf.Lerp(0f, 18f, p / 0.25f) 
-                    : Mathf.Lerp(18f, -6f, (p - 0.25f) / 0.75f) * Mathf.Exp(-(p - 0.25f) * 3f);
-                float dipY = Mathf.Sin(p * Mathf.PI) * -0.15f;
 
-                if (visualChild != null)
+                if (unitRig != null && unitRig.throwingArm != null)
                 {
+                    // Eklemli fırlatma kolunu hızla +88° yukarı savurup geri kur (tekerlekler zemine sabit kalır!)
+                    float armAngle = (p < 0.32f)
+                        ? Mathf.Lerp(0f, 88f, (p / 0.32f) * (p / 0.32f))
+                        : Mathf.Lerp(88f, 0f, (p - 0.32f) / 0.68f);
+                    unitRig.throwingArm.localRotation = Quaternion.Euler(armAngle, 0f, 0f);
+                }
+                else if (visualChild != null)
+                {
+                    float pitch = (p < 0.25f)
+                        ? Mathf.Lerp(0f, 18f, p / 0.25f)
+                        : Mathf.Lerp(18f, -6f, (p - 0.25f) / 0.75f) * Mathf.Exp(-(p - 0.25f) * 3f);
+                    float dipY = Mathf.Sin(p * Mathf.PI) * -0.15f;
                     visualChild.localPosition = new Vector3(0, dipY, 0);
                     visualChild.localRotation = Quaternion.Euler(pitch, 0, 0);
                 }
                 yield return null;
             }
 
+            if (unitRig != null && unitRig.throwingArm != null)
+            {
+                unitRig.throwingArm.localRotation = Quaternion.identity;
+            }
             if (visualChild != null && !isDead)
             {
                 visualChild.localPosition = Vector3.zero;

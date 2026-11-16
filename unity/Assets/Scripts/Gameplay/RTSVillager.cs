@@ -183,6 +183,7 @@ namespace CSE377.Gameplay
 
                     // İnşaat ilerlemesini artır (Saniyede %25)
                     currentBuildingTask.AddConstructionProgress(25f * Time.deltaTime);
+                    unit?.AnimateWorkSwing(Time.time * 9.5f);
 
                     // Çekiç vurma efekti ve sesi
                     if (Time.time >= nextBuildFxTime)
@@ -233,6 +234,7 @@ namespace CSE377.Gameplay
                     currentBuildingTask.currentHp += Mathf.RoundToInt(40f * Time.deltaTime);
                     currentBuildingTask.currentHp = Mathf.Min(currentBuildingTask.currentHp, currentBuildingTask.maxHp);
                     currentBuildingTask.CheckDamageVisualState();
+                    unit?.AnimateWorkSwing(Time.time * 9.5f);
 
                     // Çekiç vurma efekti ve sesi
                     if (Time.time >= nextBuildFxTime)
@@ -313,6 +315,7 @@ namespace CSE377.Gameplay
                     }
 
                     // Hasat aralığı
+                    unit?.AnimateWorkSwing(Time.time * 8.5f);
                     if (Time.time >= nextHarvestTime)
                     {
                         int gathered = currentResource.ExtractResource(currentResource.gatherPerTick);

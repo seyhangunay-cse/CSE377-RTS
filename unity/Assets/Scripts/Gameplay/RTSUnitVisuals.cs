@@ -3,14 +3,330 @@ using UnityEngine;
 
 namespace CSE377.Gameplay
 {
+    public class RTSUnitRig : MonoBehaviour
+    {
+        public Transform leftLeg;
+        public Transform rightLeg;
+        public Transform leftArm;
+        public Transform rightArm;
+        public Transform head;
+        public Transform torso;
+        public Transform horseFL;
+        public Transform horseFR;
+        public Transform horseBL;
+        public Transform horseBR;
+        public Transform throwingArm;
+        public bool isMounted;
+        public bool isSiege;
+
+        public void AnimateMove(float cycle, bool isAttacking)
+        {
+            if (isMounted)
+            {
+                float f1 = Mathf.Sin(cycle) * 30f;
+                float f2 = Mathf.Sin(cycle + 0.55f) * 30f;
+                float b1 = -Mathf.Sin(cycle + 0.20f) * 28f;
+                float b2 = -Mathf.Sin(cycle + 0.75f) * 28f;
+                if (horseFL != null) horseFL.localRotation = Quaternion.Euler(f1, 0f, 0f);
+                if (horseFR != null) horseFR.localRotation = Quaternion.Euler(f2, 0f, 0f);
+                if (horseBL != null) horseBL.localRotation = Quaternion.Euler(b1, 0f, 0f);
+                if (horseBR != null) horseBR.localRotation = Quaternion.Euler(b2, 0f, 0f);
+                if (!isAttacking && torso != null)
+                {
+                    torso.localRotation = Quaternion.Euler(Mathf.Sin(cycle) * 4f, 0f, 0f);
+                }
+            }
+            else if (!isSiege)
+            {
+                float swing = Mathf.Sin(cycle * 0.95f) * 28f;
+                if (leftLeg != null) leftLeg.localRotation = Quaternion.Euler(swing, 0f, 0f);
+                if (rightLeg != null) rightLeg.localRotation = Quaternion.Euler(-swing, 0f, 0f);
+                if (!isAttacking)
+                {
+                    if (leftArm != null) leftArm.localRotation = Quaternion.Euler(-swing * 0.42f, 0f, 0f);
+                    if (rightArm != null) rightArm.localRotation = Quaternion.Euler(swing * 0.42f, 0f, 0f);
+                    if (torso != null) torso.localRotation = Quaternion.Euler(3f, Mathf.Sin(cycle * 0.48f) * 4f, 0f);
+                }
+            }
+        }
+
+        public void ResetToRest(float dt)
+        {
+            Quaternion id = Quaternion.identity;
+            if (leftLeg != null) leftLeg.localRotation = Quaternion.Lerp(leftLeg.localRotation, id, dt);
+            if (rightLeg != null) rightLeg.localRotation = Quaternion.Lerp(rightLeg.localRotation, id, dt);
+            if (leftArm != null) leftArm.localRotation = Quaternion.Lerp(leftArm.localRotation, id, dt);
+            if (rightArm != null) rightArm.localRotation = Quaternion.Lerp(rightArm.localRotation, id, dt);
+            if (torso != null) torso.localRotation = Quaternion.Lerp(torso.localRotation, id, dt);
+            if (head != null) head.localRotation = Quaternion.Lerp(head.localRotation, id, dt);
+            if (horseFL != null) horseFL.localRotation = Quaternion.Lerp(horseFL.localRotation, id, dt);
+            if (horseFR != null) horseFR.localRotation = Quaternion.Lerp(horseFR.localRotation, id, dt);
+            if (horseBL != null) horseBL.localRotation = Quaternion.Lerp(horseBL.localRotation, id, dt);
+            if (horseBR != null) horseBR.localRotation = Quaternion.Lerp(horseBR.localRotation, id, dt);
+            if (throwingArm != null) throwingArm.localRotation = Quaternion.Lerp(throwingArm.localRotation, id, dt);
+        }
+    }
+
     /// <summary>
-    /// RTS birimleri için (Mızrakçı, Okçu, Süvari, Köylü, Mancınık)
-    /// dik duran, görsel olarak anında ayırt edilebilir, zengin ve optimize
-    /// 3D modeller ve ekipmanlar üretir.
+    /// RTS birimleri için (Mızrakçı, Kılıç Ustası, Okçu, Arbaletçi, İzci, Süvari, Köylü, Mancınık)
+    /// eklemli 3D modeller, PBR materyaller ve güvenli fallback görselleri üretir.
     /// </summary>
     public static class RTSUnitVisuals
     {
         private static Dictionary<string, Material> cachedMaterials = new Dictionary<string, Material>();
+
+        private static string ResolveUnitMaterialKey(string rawName)
+        {
+            if (string.IsNullOrEmpty(rawName)) return "steel";
+            string s = rawName.ToLowerInvariant();
+            if (s.Contains("horse_chestnut")) return "horse_chestnut";
+            if (s.Contains("horse_dapple")) return "horse_dapple";
+            if (s.Contains("tunic_team")) return "tunic_team";
+            if (s.Contains("chainmail")) return "chainmail";
+            if (s.Contains("leather")) return "leather";
+            if (s.Contains("linen")) return "linen";
+            if (s.Contains("skin")) return "skin";
+            if (s.Contains("timber")) return "timber";
+            if (s.Contains("granite")) return "granite";
+            if (s.Contains("gold")) return "gold";
+            if (s.Contains("iron")) return "iron";
+            if (s.Contains("steel")) return "steel";
+            return "steel";
+        }
+
+        private static Material GetUnitPbrMaterial(string matKey, UnitTeam team)
+        {
+            string cacheKey = $"PBR_{team}_{matKey}";
+            if (cachedMaterials.TryGetValue(cacheKey, out var cached) && cached != null)
+            {
+                return cached;
+            }
+
+            var shader = Shader.Find("Standard") ?? Shader.Find("Diffuse");
+            var mat = new Material(shader)
+            {
+                name = $"Mat_Unit_{cacheKey}",
+                color = Color.white
+            };
+
+            string albedoPath = null;
+            string normalPath = null;
+            float metallic = 0.0f;
+            float smoothness = 0.22f;
+
+            switch (matKey)
+            {
+                case "tunic_team":
+                    albedoPath = (team == UnitTeam.Player)
+                        ? "Textures/Units/tunic_blue_albedo"
+                        : "Textures/Units/tunic_red_albedo";
+                    normalPath = "Textures/Units/tunic_normal";
+                    smoothness = 0.16f;
+                    break;
+                case "chainmail":
+                    albedoPath = "Textures/Units/chainmail_albedo";
+                    normalPath = "Textures/Units/chainmail_normal";
+                    metallic = 0.68f;
+                    smoothness = 0.44f;
+                    break;
+                case "steel":
+                    albedoPath = "Textures/Units/steel_plate_albedo";
+                    normalPath = "Textures/Units/steel_plate_normal";
+                    metallic = 0.85f;
+                    smoothness = 0.72f;
+                    break;
+                case "leather":
+                    albedoPath = "Textures/Units/leather_armor_albedo";
+                    normalPath = "Textures/Units/leather_armor_normal";
+                    smoothness = 0.26f;
+                    break;
+                case "linen":
+                    albedoPath = "Textures/Units/linen_peasant_albedo";
+                    normalPath = "Textures/Units/linen_peasant_normal";
+                    smoothness = 0.14f;
+                    break;
+                case "skin":
+                    albedoPath = "Textures/Units/skin_tone_albedo";
+                    smoothness = 0.18f;
+                    break;
+                case "horse_chestnut":
+                    albedoPath = "Textures/Units/horse_chestnut_albedo";
+                    normalPath = "Textures/Units/horse_coat_normal";
+                    smoothness = 0.34f;
+                    break;
+                case "horse_dapple":
+                    albedoPath = "Textures/Units/horse_dapple_albedo";
+                    normalPath = "Textures/Units/horse_coat_normal";
+                    smoothness = 0.30f;
+                    break;
+                case "timber":
+                    albedoPath = "Textures/Buildings/timber_oak_albedo";
+                    normalPath = "Textures/Buildings/timber_oak_normal";
+                    smoothness = 0.20f;
+                    break;
+                case "iron":
+                    albedoPath = "Textures/Buildings/wrought_iron_albedo";
+                    normalPath = "Textures/Buildings/wrought_iron_normal";
+                    metallic = 0.80f;
+                    smoothness = 0.55f;
+                    break;
+                case "granite":
+                    albedoPath = "Textures/Environment/granite_rock_albedo";
+                    normalPath = "Textures/Environment/granite_rock_normal";
+                    smoothness = 0.16f;
+                    break;
+                case "gold":
+                    albedoPath = "Textures/Environment/gold_ore_albedo";
+                    normalPath = "Textures/Environment/gold_ore_normal";
+                    metallic = 0.88f;
+                    smoothness = 0.82f;
+                    break;
+            }
+
+            if (!string.IsNullOrEmpty(albedoPath))
+            {
+                var tex = Resources.Load<Texture2D>(albedoPath);
+                if (tex != null) mat.mainTexture = tex;
+            }
+
+            if (shader != null && shader.name == "Standard")
+            {
+                mat.SetFloat("_Metallic", metallic);
+                mat.SetFloat("_Glossiness", smoothness);
+
+                if (!string.IsNullOrEmpty(normalPath))
+                {
+                    var nTex = Resources.Load<Texture2D>(normalPath);
+                    if (nTex != null)
+                    {
+                        mat.EnableKeyword("_NORMALMAP");
+                        mat.SetTexture("_BumpMap", nTex);
+                        mat.SetFloat("_BumpScale", 0.70f);
+                    }
+                }
+            }
+
+            cachedMaterials[cacheKey] = mat;
+            return mat;
+        }
+
+        public static void ApplyUnitMaterials(GameObject root, UnitTeam team)
+        {
+            if (root == null) return;
+            foreach (var ren in root.GetComponentsInChildren<Renderer>(true))
+            {
+                if (ren == null) continue;
+                var shared = ren.sharedMaterials;
+                if (shared == null || shared.Length <= 1)
+                {
+                    string srcName = (shared != null && shared.Length == 1 && shared[0] != null)
+                        ? $"{ren.gameObject.name}_{shared[0].name}"
+                        : ren.gameObject.name;
+                    ren.sharedMaterial = GetUnitPbrMaterial(ResolveUnitMaterialKey(srcName), team);
+                }
+                else
+                {
+                    var mats = new Material[shared.Length];
+                    for (int i = 0; i < shared.Length; i++)
+                    {
+                        string slotName = (shared[i] != null) ? shared[i].name : ren.gameObject.name;
+                        mats[i] = GetUnitPbrMaterial(ResolveUnitMaterialKey(slotName), team);
+                    }
+                    ren.sharedMaterials = mats;
+                }
+            }
+        }
+
+        private static Transform WrapJointPivot(Transform root, string jointName, Vector3 pivotLocalPos)
+        {
+            Transform child = null;
+            foreach (var tr in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (tr != root && string.Equals(tr.name, jointName, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    child = tr;
+                    break;
+                }
+            }
+            if (child == null) return null;
+
+            var pivotGo = new GameObject($"Pivot_{jointName}");
+            pivotGo.transform.SetParent(root, false);
+            pivotGo.transform.localPosition = pivotLocalPos;
+            pivotGo.transform.localRotation = Quaternion.identity;
+
+            child.SetParent(pivotGo.transform, false);
+            child.localPosition = -pivotLocalPos;
+            child.localRotation = Quaternion.identity;
+            return pivotGo.transform;
+        }
+
+        private static bool TryBuildArticulatedUnit(Transform modelRoot, string lowerType, UnitTeam team)
+        {
+            string modelName;
+            bool isMounted = false;
+            bool isSiege = false;
+
+            switch (lowerType)
+            {
+                case "villager": modelName = "Villager"; break;
+                case "spearman": modelName = "Spearman"; break;
+                case "swordsman": modelName = "Swordsman"; break;
+                case "archer": modelName = "Archer"; break;
+                case "crossbowman": modelName = "Crossbowman"; break;
+                case "scout": modelName = "Scout"; isMounted = true; break;
+                case "cavalry": modelName = "Cavalry"; isMounted = true; break;
+                case "trebuchet": modelName = "Trebuchet"; isSiege = true; break;
+                default: modelName = "Spearman"; break;
+            }
+
+            var prefab = Resources.Load<GameObject>($"Models/Units/{modelName}");
+            if (prefab == null) return false;
+
+            var go = Object.Instantiate(prefab, modelRoot);
+            go.name = $"Articulated_{modelName}";
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.identity;
+            go.transform.localScale = Vector3.one;
+
+            foreach (var col in go.GetComponentsInChildren<Collider>(true))
+            {
+                Object.DestroyImmediate(col);
+            }
+
+            ApplyUnitMaterials(go, team);
+
+            var rig = go.AddComponent<RTSUnitRig>();
+            rig.isMounted = isMounted;
+            rig.isSiege = isSiege;
+
+            if (isSiege)
+            {
+                rig.throwingArm = WrapJointPivot(go.transform, "J_ThrowingArm", new Vector3(0f, 2.05f, 0.15f));
+            }
+            else if (isMounted)
+            {
+                rig.horseFL = WrapJointPivot(go.transform, "J_HorseFL", new Vector3(-0.22f, 0.80f, 0.52f));
+                rig.horseFR = WrapJointPivot(go.transform, "J_HorseFR", new Vector3( 0.22f, 0.80f, 0.52f));
+                rig.horseBL = WrapJointPivot(go.transform, "J_HorseBL", new Vector3(-0.22f, 0.80f, -0.52f));
+                rig.horseBR = WrapJointPivot(go.transform, "J_HorseBR", new Vector3( 0.22f, 0.80f, -0.52f));
+                rig.torso = WrapJointPivot(go.transform, "J_Torso", new Vector3(0f, 1.28f, -0.05f));
+                rig.head = WrapJointPivot(go.transform, "J_Head", new Vector3(0f, 1.80f, -0.05f));
+                rig.leftArm = WrapJointPivot(go.transform, "J_LeftArm", new Vector3(-0.25f, 1.80f, -0.05f));
+                rig.rightArm = WrapJointPivot(go.transform, "J_RightArm", new Vector3(0.25f, 1.80f, -0.05f));
+            }
+            else
+            {
+                rig.leftLeg = WrapJointPivot(go.transform, "J_LeftLeg", new Vector3(-0.115f, 0.72f, 0f));
+                rig.rightLeg = WrapJointPivot(go.transform, "J_RightLeg", new Vector3(0.115f, 0.72f, 0f));
+                rig.torso = WrapJointPivot(go.transform, "J_Torso", new Vector3(0f, 0.72f, 0f));
+                rig.head = WrapJointPivot(go.transform, "J_Head", new Vector3(0f, 1.24f, 0f));
+                rig.leftArm = WrapJointPivot(go.transform, "J_LeftArm", new Vector3(-0.24f, 1.18f, 0f));
+                rig.rightArm = WrapJointPivot(go.transform, "J_RightArm", new Vector3(0.24f, 1.18f, 0f));
+            }
+
+            return true;
+        }
 
         private static Material GetMat(string key, Color color, float metallic = 0f, float smoothness = 0.3f)
         {
@@ -101,6 +417,11 @@ namespace CSE377.Gameplay
             modelRoot.transform.localRotation = Quaternion.identity;
 
             string t = unitType.ToLower();
+
+            if (TryBuildArticulatedUnit(modelRoot.transform, t, team))
+            {
+                return modelRoot;
+            }
 
             if (t == "trebuchet")
             {
