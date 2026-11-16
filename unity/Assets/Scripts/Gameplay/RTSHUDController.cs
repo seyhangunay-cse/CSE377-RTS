@@ -2566,8 +2566,7 @@ namespace CSE377.Gameplay
 
                 if (gameOverRestartBtn != null)
                 {
-                    gameOverRestartBtn.onClick.RemoveAllListeners();
-                    gameOverRestartBtn.onClick.AddListener(RestartCurrentMatch);
+                    gameOverRestartBtn.gameObject.SetActive(false);
                 }
 
                 if (gameOverMainMenuBtn != null)

@@ -2337,14 +2337,13 @@ namespace CSE377.Gameplay
             var statsTxt = CreateUIText(statsBox.transform, "StatsText", "Maç İstatistikleri...", 14, Color.white, defaultFont, new Vector2(0.5f, 0.5f), new Vector2(550, 180));
             statsTxt.alignment = TextAnchor.MiddleLeft;
 
-            var restartBtn = CreateUIButton(modalBox.transform, "RestartBtn", "YENİDEN OYNA", defaultFont, new Vector2(0.28f, 0.11f), new Vector2(250, 46), new Color(0.2f, 0.65f, 0.35f));
-            var mainMenuBtn = CreateUIButton(modalBox.transform, "MainMenuBtn", "BAŞLANGIÇ EKRANINA DÖN", defaultFont, new Vector2(0.72f, 0.11f), new Vector2(270, 46), new Color(0.24f, 0.38f, 0.65f));
+            var mainMenuBtn = CreateUIButton(modalBox.transform, "MainMenuBtn", "ANA MENÜYE DÖN", defaultFont, new Vector2(0.5f, 0.11f), new Vector2(300, 46), new Color(0.24f, 0.38f, 0.65f));
 
             hud.gameOverModal = modalRoot;
             hud.gameOverTitleText = titleTxt;
             hud.gameOverSubtitleText = subtitleTxt;
             hud.gameOverStatsText = statsTxt;
-            hud.gameOverRestartBtn = restartBtn;
+            hud.gameOverRestartBtn = null;
             hud.gameOverMainMenuBtn = mainMenuBtn;
             modalRoot.SetActive(false);
 
