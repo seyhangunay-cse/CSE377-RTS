@@ -157,6 +157,18 @@ namespace CSE377.Gameplay
         {
             Application.runInBackground = true;
             nextRivalActionTime = Time.time + 15f;
+#if PHOTON_UNITY_NETWORKING
+            if (PhotonNetwork.PhotonServerSettings != null && PhotonNetwork.PhotonServerSettings.AppSettings != null)
+            {
+                PhotonNetwork.PhotonServerSettings.AppSettings.AppIdRealtime = photonAppId;
+            }
+            PhotonNetwork.NickName = localPlayerName;
+            PhotonNetwork.AutomaticallySyncScene = true;
+            if (!PhotonNetwork.IsConnected)
+            {
+                PhotonNetwork.ConnectUsingSettings();
+            }
+#endif
             RefreshOpenRoomsRegistry();
             RefreshStatusMessage();
         }
@@ -172,6 +184,7 @@ namespace CSE377.Gameplay
 
 #if PHOTON_UNITY_NETWORKING
         private const byte PhotonPacketEventCode = 77;
+        private readonly Dictionary<string, RoomInfo> photonCloudRooms = new Dictionary<string, RoomInfo>(StringComparer.OrdinalIgnoreCase);
 
         public override void OnEnable()
         {
@@ -185,12 +198,30 @@ namespace CSE377.Gameplay
             PhotonNetwork.RemoveCallbackTarget(this);
         }
 
+        private RoomOptions BuildPhotonRoomOptions()
+        {
+            return new RoomOptions
+            {
+                MaxPlayers = 2,
+                IsVisible = true,
+                IsOpen = true,
+                CustomRoomProperties = new ExitGames.Client.Photon.Hashtable
+                {
+                    { "host", isHost ? localPlayerName : hostPlayerName },
+                    { "map", RTSAutoBootstrap.SelectedMap.ToString() }
+                },
+                CustomRoomPropertiesForLobby = new string[] { "host", "map" }
+            };
+        }
+
         public override void OnConnectedToMaster()
         {
             if (isMultiplayerMode && isRoomConnected && !PhotonNetwork.InRoom)
             {
-                RoomOptions opts = new RoomOptions { MaxPlayers = 2, IsVisible = true, IsOpen = true };
-                PhotonNetwork.JoinOrCreateRoom(matchRoomId, opts, TypedLobby.Default);
+                if (isHost)
+                    PhotonNetwork.JoinOrCreateRoom(matchRoomId, BuildPhotonRoomOptions(), TypedLobby.Default);
+                else
+                    PhotonNetwork.JoinRoom(matchRoomId);
             }
             else if (!PhotonNetwork.InLobby)
             {
@@ -198,10 +229,41 @@ namespace CSE377.Gameplay
             }
         }
 
+        public override void OnRoomListUpdate(List<RoomInfo> roomList)
+        {
+            if (roomList == null) return;
+            foreach (var info in roomList)
+            {
+                if (info == null || string.IsNullOrEmpty(info.Name)) continue;
+                if (info.RemovedFromList || !info.IsOpen || !info.IsVisible)
+                {
+                    photonCloudRooms.Remove(info.Name);
+                }
+                else
+                {
+                    photonCloudRooms[info.Name] = info;
+                }
+            }
+            RefreshOpenRoomsRegistry();
+        }
+
         public override void OnJoinedRoom()
         {
             if (PhotonNetwork.CurrentRoom != null)
             {
+                if (!PhotonNetwork.IsMasterClient && PhotonNetwork.MasterClient != null)
+                {
+                    hostPlayerName = string.IsNullOrEmpty(PhotonNetwork.MasterClient.NickName) ? "Kurucu" : PhotonNetwork.MasterClient.NickName;
+                    hostInstanceId = $"PUN_{PhotonNetwork.MasterClient.ActorNumber}";
+                }
+                if (PhotonNetwork.CurrentRoom.CustomProperties != null && PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue("map", out object mapObj))
+                {
+                    if (mapObj != null && Enum.TryParse(mapObj.ToString(), out RTSMapType syncedMap))
+                    {
+                        RTSAutoBootstrap.SelectedMap = syncedMap;
+                        RTSHUDController.Instance?.UpdateMapSelectionUI();
+                    }
+                }
                 connectedPlayersCount = Mathf.Max(connectedPlayersCount, PhotonNetwork.CurrentRoom.PlayerCount);
                 SendRawPacket("HELLO", localPlayerName);
                 RefreshStatusMessage();
@@ -217,6 +279,18 @@ namespace CSE377.Gameplay
                 guestInstanceId = $"PUN_{newPlayer.ActorNumber}";
                 connectedPlayersCount = 2;
                 SendRawPacket("HELLO", localPlayerName);
+                RefreshStatusMessage();
+                OnRoomStateChanged?.Invoke();
+            }
+        }
+
+        public override void OnPlayerLeftRoom(Player otherPlayer)
+        {
+            if (otherPlayer != null && !otherPlayer.IsLocal)
+            {
+                guestPlayerName = "";
+                guestInstanceId = "";
+                connectedPlayersCount = 1;
                 RefreshStatusMessage();
                 OnRoomStateChanged?.Invoke();
             }
@@ -391,6 +465,12 @@ namespace CSE377.Gameplay
         /// </summary>
         public void LeaveCurrentRoom()
         {
+#if PHOTON_UNITY_NETWORKING
+            if (PhotonNetwork.InRoom)
+            {
+                PhotonNetwork.LeaveRoom();
+            }
+#endif
             RemoveOwnRoomFromRegistry();
             CloseUdpSocket();
             isRoomConnected = false;
@@ -414,6 +494,12 @@ namespace CSE377.Gameplay
         /// </summary>
         public void SetSinglePlayerMode()
         {
+#if PHOTON_UNITY_NETWORKING
+            if (PhotonNetwork.InRoom)
+            {
+                PhotonNetwork.LeaveRoom();
+            }
+#endif
             RemoveOwnRoomFromRegistry();
             CloseUdpSocket();
             isMultiplayerMode = false;
@@ -602,10 +688,12 @@ namespace CSE377.Gameplay
                 PhotonNetwork.AutomaticallySyncScene = true;
                 PhotonNetwork.ConnectUsingSettings();
             }
-            else
+            else if (PhotonNetwork.IsConnectedAndReady)
             {
-                RoomOptions opts = new RoomOptions { MaxPlayers = 2, IsVisible = true, IsOpen = true };
-                PhotonNetwork.JoinOrCreateRoom(matchRoomId, opts, TypedLobby.Default);
+                if (isHost)
+                    PhotonNetwork.JoinOrCreateRoom(matchRoomId, BuildPhotonRoomOptions(), TypedLobby.Default);
+                else
+                    PhotonNetwork.JoinRoom(matchRoomId);
             }
 #endif
 
@@ -761,6 +849,30 @@ namespace CSE377.Gameplay
 
                 activeOpenRooms.Clear();
                 activeOpenRooms.AddRange(reg.rooms);
+#if PHOTON_UNITY_NETWORKING
+                foreach (var kv in photonCloudRooms)
+                {
+                    var pRoom = kv.Value;
+                    if (pRoom == null) continue;
+                    bool alreadyInList = activeOpenRooms.Exists(r => r != null && string.Equals(r.roomName, pRoom.Name, StringComparison.OrdinalIgnoreCase));
+                    if (!alreadyInList)
+                    {
+                        string hName = (pRoom.CustomProperties != null && pRoom.CustomProperties.TryGetValue("host", out object hObj) && hObj != null)
+                            ? hObj.ToString() : pRoom.Name;
+                        string mName = (pRoom.CustomProperties != null && pRoom.CustomProperties.TryGetValue("map", out object mObj) && mObj != null)
+                            ? mObj.ToString() : RTSMapType.RiverValley.ToString();
+                        activeOpenRooms.Add(new RoomListingInfo
+                        {
+                            roomName = pRoom.Name,
+                            hostName = hName,
+                            hostInstanceId = "PHOTON_CLOUD",
+                            mapType = mName,
+                            playerCount = pRoom.PlayerCount,
+                            matchStarted = false
+                        });
+                    }
+                }
+#endif
                 RefreshStatusMessage();
                 OnRoomStateChanged?.Invoke();
             }
