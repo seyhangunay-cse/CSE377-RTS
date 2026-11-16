@@ -247,7 +247,7 @@ namespace CSE377.AI
             // 5. TAHKİMAT & KULE & SUR & KAPI (Fortifications, Towers, Gates)
             if (q.Contains("kule") || q.Contains("sur") || q.Contains("duvar") || q.Contains("tahkim") || q.Contains("kapı") || q.Contains("kapi") || q.Contains("savunma kulesi"))
             {
-                plan.summary = "Tahkimat ve Garnizon Planı: Düşman akın güzergahlarına gözetleme kuleleri ve taş surlar çekilerek geçilmez savunma hattı inşa ediliyor.";
+                plan.summary = "Savunma ve Garnizon Planı: Düşman akın güzergahlarına gözetleme kuleleri çekilerek savunma hattı kuruluyor.";
                 plan.confidence = 0.91f;
 
                 plan.actions.Add(new RTSAction
@@ -256,14 +256,6 @@ namespace CSE377.AI
                     building_type = "tower",
                     target_zone = "north_gate",
                     reason = "Kuzey geçidine düşmanı otomatik oklayan Savunma Kulesi inşası."
-                });
-
-                plan.actions.Add(new RTSAction
-                {
-                    action_type = "BUILD",
-                    building_type = "stonewall",
-                    target_zone = "north_gate",
-                    reason = "Düşman atlılarını durduracak sağlam Taş Sur tahkimatı."
                 });
 
                 plan.actions.Add(new RTSAction

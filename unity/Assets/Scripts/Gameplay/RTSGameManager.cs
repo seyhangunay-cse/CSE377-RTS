@@ -785,8 +785,6 @@ namespace CSE377.Gameplay
             else if (bKey == "towncenter") bType = RTSBuildingType.TownCenter;
             else if (bKey == "house") bType = RTSBuildingType.House;
             else if (bKey == "farm") bType = RTSBuildingType.Farm;
-            else if (bKey == "stonewall" || bKey == "stone_wall" || bKey == "wall") bType = RTSBuildingType.StoneWall;
-            else if (bKey == "citygate" || bKey == "city_gate" || bKey == "gate") bType = RTSBuildingType.CityGate;
             else if (bKey == "castle") bType = RTSBuildingType.Castle;
 
             if (execTeam == LocalPlayerTeam && GameActionValidator.BuildingCosts.TryGetValue(bKey, out var cost))

@@ -170,12 +170,11 @@ namespace CSE377.Gameplay
             GetBuildingPlacementInfo(type, out string bName, out string bCost, out string bDesc);
             if (RTSHUDController.Instance != null)
             {
-                string rotHint = IsFortificationType(type) ? "   •   [R]: 90° Döndür" : "";
                 RTSHUDController.Instance.ShowPlacementBanner(
                     $"{bName.ToUpper()}  (Maliyet: {bCost})",
-                    $"{bDesc}   •   [Sol Tık]: İnşa Et{rotHint}   •   [Sağ Tık / ESC]: İptal"
+                    $"{bDesc}   •   [Sol Tık]: İnşa Et   •   [Sağ Tık / ESC]: İptal"
                 );
-                RTSHUDController.Instance.SetAiStatus($"[İNŞAAT EMRİ] {bName} ({bCost})  •  {bDesc}  |  Yerleştir: [Sol Tık]{rotHint}  •  İptal: [Sağ Tık / ESC]", new Color(1f, 0.85f, 0.3f));
+                RTSHUDController.Instance.SetAiStatus($"[İNŞAAT EMRİ] {bName} ({bCost})  •  {bDesc}  |  Yerleştir: [Sol Tık]  •  İptal: [Sağ Tık / ESC]", new Color(1f, 0.85f, 0.3f));
             }
         }
 

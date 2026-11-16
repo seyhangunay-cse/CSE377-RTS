@@ -2340,10 +2340,10 @@ namespace CSE377.Gameplay
                     ShowVillagerBuildMenu();
                 });
             }
-            // Sayfa 2: Savunma Kulesi, Sur, Kapı ve Ek Şehir Merkezi
+            // Sayfa 2: Savunma Kulesi ve Ek Şehir Merkezi
             else
             {
-                if (actionPanelTitle != null) actionPanelTitle.text = "KÖYLÜ İNŞAAT - SAVUNMA VE TAHKİMAT (Sayfa 3/3)";
+                if (actionPanelTitle != null) actionPanelTitle.text = "KÖYLÜ İNŞAAT - SAVUNMA VE YÖNETİM (Sayfa 3/3)";
 
                 string towerLabel = isFeudalOrHigher ? "Savunma Kulesi\n125O, 50A" : "Savunma Kulesi\n(Feodal Çağ)";
                 SetupActionButton(actionBtn1, actionBtn1Text, towerLabel, isFeudalOrHigher, () =>
@@ -2351,21 +2351,14 @@ namespace CSE377.Gameplay
                     RTSSelectionManager.Instance?.StartBuildingPlacement(RTSBuildingType.DefenseTower);
                 });
 
-                SetupActionButton(actionBtn2, actionBtn2Text, "Taş Duvar\n20O, 10A", true, () =>
-                {
-                    RTSSelectionManager.Instance?.StartBuildingPlacement(RTSBuildingType.StoneWall);
-                });
-
-                SetupActionButton(actionBtn3, actionBtn3Text, "Şehir Kapısı\n50O, 20A", true, () =>
-                {
-                    RTSSelectionManager.Instance?.StartBuildingPlacement(RTSBuildingType.CityGate);
-                });
-
                 string tcLabel = isCastleAge ? "Şehir Merkezi\n350O, 100A" : "Şehir Merkezi\n(Kale Çağı)";
-                SetupActionButton(actionBtn4, actionBtn4Text, tcLabel, isCastleAge, () =>
+                SetupActionButton(actionBtn2, actionBtn2Text, tcLabel, isCastleAge, () =>
                 {
                     RTSSelectionManager.Instance?.StartBuildingPlacement(RTSBuildingType.TownCenter);
                 });
+
+                SetupActionButton(actionBtn3, actionBtn3Text, "", false, null);
+                SetupActionButton(actionBtn4, actionBtn4Text, "", false, null);
 
                 SetupActionButton(actionBtn5, actionBtn5Text, "<< Ekonomi\n(Sayfa 1/3)", true, () =>
                 {
