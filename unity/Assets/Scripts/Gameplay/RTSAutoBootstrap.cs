@@ -2449,7 +2449,7 @@ namespace CSE377.Gameplay
             if (audioBtnTxt != null) { audioBtnTxt.fontSize = 13; audioBtnTxt.fontStyle = FontStyle.Bold; audioBtnTxt.color = Color.white; }
 
             // --- C. ALT BİLGİ MÜHRÜ (LORE FOOTER) ---
-            CreateUIText(mainCard.transform, "Footer", "⚜️ CSE-377 RTS  •  Kraliyet Strateji Divanı  •  Taktiksel AI Komutanlığı ⚜️", 12, new Color(0.95f, 0.88f, 0.72f, 1.0f), medievalBodyFont, new Vector2(0.5f, 0.035f), new Vector2(860, 22));
+            CreateUIText(mainCard.transform, "Footer", "⚜️ IMPERIUM: MEDIEVAL AGENTS  •  Kraliyet Strateji Divanı  •  Taktiksel AI Komutanlığı ⚜️", 12, new Color(0.95f, 0.88f, 0.72f, 1.0f), medievalBodyFont, new Vector2(0.5f, 0.035f), new Vector2(860, 22));
 
             // --- 7.5 ÇOK OYUNCULU PHOTON ODA LİSTESİ MODALI (Yalnızca "ÇOK OYUNCULU" seçeneğine girince açılır) ---
             var mpModal = CreateUIPanel(canvasGo.transform, "MultiplayerLobby_Modal", new Vector2(0, 0), new Vector2(1, 1), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, new Color(0.015f, 0.02f, 0.03f, 1.0f));
@@ -2715,7 +2715,7 @@ namespace CSE377.Gameplay
             if (mmTxt != null) { mmTxt.color = new Color(1.0f, 0.75f, 0.70f); }
 
             // Alt Mühür Bilgisi
-            CreateUIText(pauseBox.transform, "PFooter", "⚜️ CSE-377 RTS  •  Kraliyet Komuta Karargahı ⚜️", 10, new Color(0.80f, 0.75f, 0.60f, 0.85f), medievalBodyFont, new Vector2(0.5f, 0.08f), new Vector2(380, 20));
+            CreateUIText(pauseBox.transform, "PFooter", "⚜️ IMPERIUM  •  Kraliyet Komuta Karargahı ⚜️", 10, new Color(0.80f, 0.75f, 0.60f, 0.85f), medievalBodyFont, new Vector2(0.5f, 0.08f), new Vector2(380, 20));
 
             hud.pauseMenuModal = pauseModal;
             hud.pauseResumeBtn = pResumeBtn;
