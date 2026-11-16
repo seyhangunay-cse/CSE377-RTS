@@ -2387,7 +2387,7 @@ namespace CSE377.Gameplay
             leftBorder.effectColor = new Color(0.45f, 0.40f, 0.28f, 0.55f);
             leftBorder.effectDistance = new Vector2(1.2f, -1.2f);
 
-            CreateUIText(leftCol.transform, "ColHeader", "🗺️  SAVAŞ SAHASI SEÇİMİ (WAR THEATER)", 12, new Color(1f, 0.88f, 0.42f), medievalTitleFont, new Vector2(0.5f, 0.93f), new Vector2(400, 22)).fontStyle = FontStyle.Bold;
+            CreateUIText(leftCol.transform, "ColHeader", "🗺️  SAVAŞ SAHASI SEÇİMİ", 12, new Color(1f, 0.88f, 0.42f), medievalTitleFont, new Vector2(0.5f, 0.93f), new Vector2(400, 22)).fontStyle = FontStyle.Bold;
 
             // Harita Seçim Butonu (Ahşap & Pirinç Dokulu Buton)
             var mapBtn = CreateUITexturedButton(leftCol.transform, "MapBtn", "◄   HARİTA: NEHİR VADİSİ   ►", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.80f), new Vector2(390, 44), new Color(0.12f, 0.22f, 0.38f));
