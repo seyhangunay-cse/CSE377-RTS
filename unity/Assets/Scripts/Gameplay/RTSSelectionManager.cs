@@ -111,12 +111,12 @@ namespace CSE377.Gameplay
             else if (type == RTSBuildingType.StoneWall)
             {
                 placementGhost = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                placementGhost.transform.localScale = new Vector3(4.2f, 3.5f, 1.4f);
+                placementGhost.transform.localScale = new Vector3(4.0f, 2.4f, 1.4f);
             }
             else if (type == RTSBuildingType.CityGate)
             {
                 placementGhost = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                placementGhost.transform.localScale = new Vector3(5.6f, 4.8f, 1.8f);
+                placementGhost.transform.localScale = new Vector3(6.0f, 3.2f, 1.8f);
             }
             else if (type == RTSBuildingType.Castle)
             {
@@ -248,6 +248,57 @@ namespace CSE377.Gameplay
             }
         }
 
+        private static bool IsFortificationType(RTSBuildingType type)
+        {
+            return type == RTSBuildingType.StoneWall || type == RTSBuildingType.CityGate || type == RTSBuildingType.DefenseTower;
+        }
+
+        private static float GetFortificationHalfWidth(RTSBuildingType type)
+        {
+            if (type == RTSBuildingType.StoneWall) return 2.0f;
+            if (type == RTSBuildingType.CityGate) return 3.0f;
+            if (type == RTSBuildingType.DefenseTower) return 1.2f;
+            return 2.0f;
+        }
+
+        private Vector3 SnapFortificationPosition(Vector3 rawPos, RTSBuildingType newType)
+        {
+            if (!IsFortificationType(newType)) return rawPos;
+
+            float newHalfW = GetFortificationHalfWidth(newType);
+            Vector3 bestSnapped = rawPos;
+            float bestSnapDist = 3.2f; // Mıknatıs hizalama yarıçapı
+
+            foreach (var b in RTSBuilding.AllBuildings)
+            {
+                if (b == null || b.currentHp <= 0 || !IsFortificationType(b.buildingType)) continue;
+
+                float existHalfW = GetFortificationHalfWidth(b.buildingType);
+                float joinOffset = existHalfW + newHalfW;
+
+                Vector3 leftCandidate = new Vector3(b.transform.position.x - joinOffset, rawPos.y, b.transform.position.z);
+                Vector3 rightCandidate = new Vector3(b.transform.position.x + joinOffset, rawPos.y, b.transform.position.z);
+
+                float dLeft = Vector2.Distance(new Vector2(rawPos.x, rawPos.z), new Vector2(leftCandidate.x, leftCandidate.z));
+                if (dLeft < bestSnapDist)
+                {
+                    bestSnapDist = dLeft;
+                    bestSnapped = leftCandidate;
+                }
+
+                float dRight = Vector2.Distance(new Vector2(rawPos.x, rawPos.z), new Vector2(rightCandidate.x, rightCandidate.z));
+                if (dRight < bestSnapDist)
+                {
+                    bestSnapDist = dRight;
+                    bestSnapped = rightCandidate;
+                }
+            }
+
+            bestSnapped.x = Mathf.Clamp(bestSnapped.x, -64f, 64f);
+            bestSnapped.z = Mathf.Clamp(bestSnapped.z, -64f, 64f);
+            return bestSnapped;
+        }
+
         private void HandleBuildingPlacement()
         {
             Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
@@ -259,6 +310,9 @@ namespace CSE377.Gameplay
                     Mathf.Clamp(hit.point.z, -64f, 64f)
                 );
 
+                // Taş Duvar, Şehir Kapısı ve Savunma Kulesi yan yana getirildiğinde uç uca tam kenetlenmesi için otomatik hizala (Snap)
+                clampedPlacePos = SnapFortificationPosition(clampedPlacePos, placingType);
+
                 if (placementGhost != null)
                 {
                     placementGhost.transform.position = clampedPlacePos + Vector3.up * 1f;
@@ -266,15 +320,31 @@ namespace CSE377.Gameplay
 
                 bool isBlockedByObject = false;
                 Vector2 place2D = new Vector2(clampedPlacePos.x, clampedPlacePos.z);
+                bool placingFortification = IsFortificationType(placingType);
 
                 foreach (var b in RTSBuilding.AllBuildings)
                 {
                     if (b == null) continue;
-                    float minDist = (Mathf.Max(b.GetBuildingFootprint().x, b.GetBuildingFootprint().z) * 0.5f) + 2.8f;
-                    if (Vector2.Distance(place2D, new Vector2(b.transform.position.x, b.transform.position.z)) < minDist)
+                    if (placingFortification && IsFortificationType(b.buildingType))
                     {
-                        isBlockedByObject = true;
-                        break;
+                        // Tahkimat parçaları (Duvar + Kapı + Kule) uç uca birleşebilmeli; sadece üst üste binmeyi engelle
+                        float combinedHalfX = GetFortificationHalfWidth(b.buildingType) + GetFortificationHalfWidth(placingType);
+                        float dx = Mathf.Abs(place2D.x - b.transform.position.x);
+                        float dz = Mathf.Abs(place2D.y - b.transform.position.z);
+                        if (dx < combinedHalfX - 0.35f && dz < 1.35f)
+                        {
+                            isBlockedByObject = true;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        float minDist = (Mathf.Max(b.GetBuildingFootprint().x, b.GetBuildingFootprint().z) * 0.5f) + 2.8f;
+                        if (Vector2.Distance(place2D, new Vector2(b.transform.position.x, b.transform.position.z)) < minDist)
+                        {
+                            isBlockedByObject = true;
+                            break;
+                        }
                     }
                 }
 
