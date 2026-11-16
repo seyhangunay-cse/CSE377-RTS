@@ -10,18 +10,92 @@ namespace CSE377.Gameplay
     public static class RTSPathfinder
     {
         private const float WorldHalfSize = 70f;
-        private const float CellSize = 2.0f;
-        private const int GridDim = 70; // 140m / 2.0m = 70x70
+        private const float CellSize = 0.70f;
+        private const int GridDim = 200; // 140m / 0.70m = 200x200
+        private const int MaxCells = GridDim * GridDim;
 
         private static readonly bool[,] blocked = new bool[GridDim, GridDim];
-        private static readonly int[] gCost = new int[GridDim * GridDim];
-        private static readonly int[] fCost = new int[GridDim * GridDim];
-        private static readonly int[] parentIdx = new int[GridDim * GridDim];
-        private static readonly byte[] state = new byte[GridDim * GridDim]; // 0=unvisited, 1=open, 2=closed
+        private static readonly int[] gCost = new int[MaxCells];
+        private static readonly int[] fCost = new int[MaxCells];
+        private static readonly int[] parentIdx = new int[MaxCells];
+        private static readonly byte[] state = new byte[MaxCells]; // 0=unvisited, 1=open, 2=closed
+        private static readonly int[] openHeap = new int[MaxCells];
+        private static readonly int[] heapIndex = new int[MaxCells];
+        private static int openCount = 0;
 
         private static readonly int[] dx = { 1, -1, 0, 0, 1, 1, -1, -1 };
         private static readonly int[] dz = { 0, 0, 1, -1, 1, -1, 1, -1 };
         private static readonly int[] dCost = { 10, 10, 10, 10, 14, 14, 14, 14 };
+
+        private static void HeapSwap(int a, int b)
+        {
+            int nodeA = openHeap[a];
+            int nodeB = openHeap[b];
+            openHeap[a] = nodeB;
+            openHeap[b] = nodeA;
+            heapIndex[nodeB] = a;
+            heapIndex[nodeA] = b;
+        }
+
+        private static void HeapSiftUp(int pos)
+        {
+            while (pos > 0)
+            {
+                int parent = (pos - 1) >> 1;
+                if (fCost[openHeap[pos]] < fCost[openHeap[parent]])
+                {
+                    HeapSwap(pos, parent);
+                    pos = parent;
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+
+        private static void HeapSiftDown(int pos)
+        {
+            while (true)
+            {
+                int left = (pos << 1) + 1;
+                if (left >= openCount) break;
+                int right = left + 1;
+                int smallest = (right < openCount && fCost[openHeap[right]] < fCost[openHeap[left]]) ? right : left;
+                if (fCost[openHeap[smallest]] < fCost[openHeap[pos]])
+                {
+                    HeapSwap(pos, smallest);
+                    pos = smallest;
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+
+        private static void HeapPush(int nodeIdx)
+        {
+            openHeap[openCount] = nodeIdx;
+            heapIndex[nodeIdx] = openCount;
+            openCount++;
+            HeapSiftUp(openCount - 1);
+        }
+
+        private static int HeapPop()
+        {
+            int top = openHeap[0];
+            openCount--;
+            if (openCount > 0)
+            {
+                int last = openHeap[openCount];
+                openHeap[0] = last;
+                heapIndex[last] = 0;
+                HeapSiftDown(0);
+            }
+            heapIndex[top] = -1;
+            return top;
+        }
 
         private static int WorldToCell(float val)
         {
@@ -61,8 +135,9 @@ namespace CSE377.Gameplay
                 }
             }
 
-            // 2. Binalar (Birim yarıçapı payıyla)
-            float unitPadding = 0.85f;
+            // 2. Binalar (Birim yarıçapına uygun hücre merkezi mesafesi kontrolü — dar geçitleri korur)
+            float unitClearance = 0.40f;
+            float clearanceSq = unitClearance * unitClearance;
             foreach (var b in RTSBuilding.AllBuildings)
             {
                 if (b == null || !b.gameObject.activeInHierarchy || b == ignoreBuilding || b.currentHp <= 0) continue;
@@ -73,16 +148,41 @@ namespace CSE377.Gameplay
                 Vector3 center = (bCol != null) ? bCol.bounds.center : b.transform.position;
                 Vector3 ext = (bCol != null) ? bCol.bounds.extents : b.GetBuildingFootprint() * 0.5f;
 
-                int minX = WorldToCell(center.x - ext.x - unitPadding);
-                int maxX = WorldToCell(center.x + ext.x + unitPadding);
-                int minZ = WorldToCell(center.z - ext.z - unitPadding);
-                int maxZ = WorldToCell(center.z + ext.z + unitPadding);
+                int minX = WorldToCell(center.x - ext.x - unitClearance);
+                int maxX = WorldToCell(center.x + ext.x + unitClearance);
+                int minZ = WorldToCell(center.z - ext.z - unitClearance);
+                int maxZ = WorldToCell(center.z + ext.z + unitClearance);
+
+                bool useCollider = (bCol != null && bCol.enabled);
+                float queryY = center.y;
 
                 for (int gx = minX; gx <= maxX; gx++)
                 {
+                    float wx = -WorldHalfSize + (gx + 0.5f) * CellSize;
                     for (int gz = minZ; gz <= maxZ; gz++)
                     {
-                        blocked[gx, gz] = true;
+                        if (blocked[gx, gz]) continue;
+                        float wz = -WorldHalfSize + (gz + 0.5f) * CellSize;
+
+                        if (useCollider)
+                        {
+                            Vector3 closest = bCol.ClosestPoint(new Vector3(wx, queryY, wz));
+                            float offX = wx - closest.x;
+                            float offZ = wz - closest.z;
+                            if (offX * offX + offZ * offZ < clearanceSq)
+                            {
+                                blocked[gx, gz] = true;
+                            }
+                        }
+                        else
+                        {
+                            float offX = Mathf.Max(0f, Mathf.Abs(wx - center.x) - ext.x);
+                            float offZ = Mathf.Max(0f, Mathf.Abs(wz - center.z) - ext.z);
+                            if (offX * offX + offZ * offZ < clearanceSq)
+                            {
+                                blocked[gx, gz] = true;
+                            }
+                        }
                     }
                 }
             }
@@ -95,9 +195,9 @@ namespace CSE377.Gameplay
 
                 int cGx = WorldToCell(b.transform.position.x);
                 int cGz = WorldToCell(b.transform.position.z);
-                for (int gx = Mathf.Max(0, cGx - 2); gx <= Mathf.Min(GridDim - 1, cGx + 2); gx++)
+                for (int gx = Mathf.Max(0, cGx - 4); gx <= Mathf.Min(GridDim - 1, cGx + 4); gx++)
                 {
-                    for (int gz = Mathf.Max(0, cGz - 2); gz <= Mathf.Min(GridDim - 1, cGz + 2); gz++)
+                    for (int gz = Mathf.Max(0, cGz - 4); gz <= Mathf.Min(GridDim - 1, cGz + 4); gz++)
                     {
                         Vector3 cellWorld = CellToWorld(gx, gz, b.transform.position.y);
                         Vector3 localCell = b.transform.InverseTransformPoint(cellWorld);
@@ -119,7 +219,7 @@ namespace CSE377.Gameplay
                 return true;
             }
 
-            for (int r = 1; r <= 6; r++)
+            for (int r = 1; r <= 16; r++)
             {
                 float bestDist = float.MaxValue;
                 int bestX = -1;
@@ -128,6 +228,7 @@ namespace CSE377.Gameplay
                 {
                     for (int oz = -r; oz <= r; oz++)
                     {
+                        if (Mathf.Abs(ox) != r && Mathf.Abs(oz) != r) continue;
                         int nx = cx + ox;
                         int nz = cz + oz;
                         if (nx < 0 || nx >= GridDim || nz < 0 || nz >= GridDim) continue;
@@ -158,10 +259,13 @@ namespace CSE377.Gameplay
 
         private static bool HasLineOfSight(int x0, int z0, int x1, int z1)
         {
-            int steps = Mathf.Max(Mathf.Abs(x1 - x0), Mathf.Abs(z1 - z0)) * 2;
+            int steps = Mathf.Max(Mathf.Abs(x1 - x0), Mathf.Abs(z1 - z0)) * 4;
             if (steps <= 1) return true;
 
-            for (int i = 1; i < steps; i++)
+            int prevX = x0;
+            int prevZ = z0;
+
+            for (int i = 1; i <= steps; i++)
             {
                 float t = (float)i / steps;
                 int gx = Mathf.RoundToInt(Mathf.Lerp(x0, x1, t));
@@ -170,6 +274,18 @@ namespace CSE377.Gameplay
                 {
                     return false;
                 }
+
+                // Çapraz geçişlerde bina köşesinden kesmeyi (corner-clipping) önle
+                if (gx != prevX && gz != prevZ)
+                {
+                    if (blocked[gx, prevZ] || blocked[prevX, gz])
+                    {
+                        return false;
+                    }
+                }
+
+                prevX = gx;
+                prevZ = gz;
             }
             return true;
         }
@@ -195,7 +311,7 @@ namespace CSE377.Gameplay
             }
 
             System.Array.Clear(state, 0, state.Length);
-            var openList = new List<int>(128);
+            openCount = 0;
 
             int startIdx = sz * GridDim + sx;
             int targetIdx = tz * GridDim + tx;
@@ -204,31 +320,16 @@ namespace CSE377.Gameplay
             fCost[startIdx] = Heuristic(sx, sz, tx, tz);
             parentIdx[startIdx] = -1;
             state[startIdx] = 1;
-            openList.Add(startIdx);
+            HeapPush(startIdx);
 
             bool found = false;
             int iterations = 0;
-            const int maxIterations = 3500;
+            const int maxIterations = 18000;
 
-            while (openList.Count > 0 && iterations < maxIterations)
+            while (openCount > 0 && iterations < maxIterations)
             {
                 iterations++;
-                int bestPos = 0;
-                int current = openList[0];
-                int bestF = fCost[current];
-                for (int i = 1; i < openList.Count; i++)
-                {
-                    int idx = openList[i];
-                    if (fCost[idx] < bestF)
-                    {
-                        bestF = fCost[idx];
-                        current = idx;
-                        bestPos = i;
-                    }
-                }
-
-                openList[bestPos] = openList[openList.Count - 1];
-                openList.RemoveAt(openList.Count - 1);
+                int current = HeapPop();
                 state[current] = 2;
 
                 if (current == targetIdx)
@@ -265,7 +366,11 @@ namespace CSE377.Gameplay
                         if (state[nIdx] != 1)
                         {
                             state[nIdx] = 1;
-                            openList.Add(nIdx);
+                            HeapPush(nIdx);
+                        }
+                        else
+                        {
+                            HeapSiftUp(heapIndex[nIdx]);
                         }
                     }
                 }

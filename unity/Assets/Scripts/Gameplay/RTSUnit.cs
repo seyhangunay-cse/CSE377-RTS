@@ -179,7 +179,7 @@ namespace CSE377.Gameplay
             {
                 var col = gameObject.AddComponent<CapsuleCollider>();
                 col.center = new Vector3(0, 1f, 0);
-                col.radius = 0.5f;
+                col.radius = 0.40f;
                 col.height = 2f;
             }
 
@@ -198,12 +198,18 @@ namespace CSE377.Gameplay
 
         public void EnsurePhysics()
         {
+            float targetRadius = (unitType == "trebuchet") ? 0.55f : 0.40f;
+            var capCol = GetComponent<CapsuleCollider>();
             if (GetComponent<Collider>() == null)
             {
-                var col = gameObject.AddComponent<CapsuleCollider>();
-                col.center = new Vector3(0, 1f, 0);
-                col.radius = 0.45f;
-                col.height = 2f;
+                capCol = gameObject.AddComponent<CapsuleCollider>();
+                capCol.center = new Vector3(0, 1f, 0);
+                capCol.radius = targetRadius;
+                capCol.height = 2f;
+            }
+            else if (capCol != null)
+            {
+                capCol.radius = targetRadius;
             }
 
             var rb = GetComponent<Rigidbody>();
@@ -291,6 +297,25 @@ namespace CSE377.Gameplay
 
         private readonly System.Collections.Generic.Queue<Vector3> moveWaypoints = new System.Collections.Generic.Queue<Vector3>();
         private RTSBuilding currentIgnoreBuilding;
+
+        public void StopMovementOrder()
+        {
+            isMoving = false;
+            moveWaypoints.Clear();
+            commandDestination = Vector3.zero;
+            stuckCheckTimer = 0f;
+            stuckAccumulatedTime = 0f;
+        }
+
+        private void FaceHorizontal(Vector3 worldPos)
+        {
+            Vector3 dir = worldPos - transform.position;
+            dir.y = 0f;
+            if (dir.sqrMagnitude > 0.0001f)
+            {
+                transform.rotation = Quaternion.LookRotation(dir.normalized);
+            }
+        }
 
         public void MoveTo(Vector3 destination, bool isManual = true, float forcedCrossingX = float.NaN, RTSBuilding ignoreBuilding = null)
         {
@@ -815,7 +840,7 @@ namespace CSE377.Gameplay
                             if (depenDir.sqrMagnitude > 0.001f)
                             {
                                 depenDir.Normalize();
-                                transform.position += depenDir * (depenDist + 0.10f);
+                                transform.position += depenDir * (depenDist + 0.02f);
                             }
                         }
                     }
@@ -829,10 +854,10 @@ namespace CSE377.Gameplay
                 Vector3 targetFlat = new Vector3(targetDestination.x, currentPos.y, targetDestination.z);
                 float distance = Vector3.Distance(currentPos, targetFlat);
 
-                // Ara geçiş noktalarında (köprü girişi/çıkışı, bina köşesi) 0.65m akıcı geçiş.
+                // Ara geçiş noktalarında dar bina aralıklarını kesmeden akıcı geçiş;
                 // Yalnızca son hedefte: Saldırı hedefi varsa menzil eşiği, yoksa 0.35m durma eşiği.
                 float stopThreshold = (moveWaypoints.Count > 0) 
-                    ? 0.65f 
+                    ? Mathf.Max(0.35f, moveSpeed * Time.deltaTime * 1.25f) 
                     : ((currentAttackTarget != null || currentAttackBuilding != null) ? attackRange * 0.9f : 0.35f);
 
                 if (distance > stopThreshold)
@@ -861,9 +886,9 @@ namespace CSE377.Gameplay
                     if (proposedDir != Vector3.zero)
                     {
                         Vector3 castOrigin = transform.position + Vector3.up * 0.6f;
-                        float castRadius = 0.32f;
+                        float castRadius = 0.25f;
 
-                        if (Physics.SphereCast(castOrigin, castRadius, proposedDir, out RaycastHit hit, stepDist + 0.35f))
+                        if (Physics.SphereCast(castOrigin, castRadius, proposedDir, out RaycastHit hit, stepDist + 0.25f))
                         {
                             if (hit.collider != null && !hit.collider.isTrigger)
                             {
@@ -879,26 +904,49 @@ namespace CSE377.Gameplay
 
                                     if (!isFriendlyGate)
                                     {
-                                        // 1. Hedef İnşaat / Tamirat / Kuşatma Binası Kontrolü
+                                        // 1. Hedef Kaynak / İnşaat / Tamirat / Kuşatma / Teslimat Binası Kontrolü
                                         if (b != null && currentAttackBuilding == b)
                                         {
-                                            isMoving = false;
-                                            moveWaypoints.Clear();
-                                            commandDestination = Vector3.zero;
+                                            StopMovementOrder();
                                             proposedDir = Vector3.zero;
                                             return;
                                         }
 
                                         var villager = GetComponent<RTSVillager>();
-                                        if (villager != null && b != null && 
-                                            (villager.currentBuildingTask == b || (villager.currentState == VillagerState.WalkingToBuild && villager.currentBuildingTask == b)))
+                                        if (villager != null)
                                         {
-                                            // Köylü inşa edeceği binanın sınırına ulaştı! Doğrudan inşaata başlasın
-                                            isMoving = false;
-                                            commandDestination = Vector3.zero;
-                                            villager.currentState = VillagerState.Building;
-                                            proposedDir = Vector3.zero;
-                                            return;
+                                            var hitRes = hit.collider.GetComponentInParent<RTSResourceSource>();
+                                            if (villager.currentState == VillagerState.WalkingToResource && villager.currentResource != null && hitRes == villager.currentResource)
+                                            {
+                                                // Köylü toplama yapacağı kaynağa ulaştı -> sekme/dönme yapmadan doğrudan kaynağa dönüp çalışsın
+                                                StopMovementOrder();
+                                                villager.currentState = VillagerState.Harvesting;
+                                                FaceHorizontal(hitRes.transform.position);
+                                                proposedDir = Vector3.zero;
+                                                return;
+                                            }
+
+                                            if (b != null && villager.currentBuildingTask == b &&
+                                                (villager.currentState == VillagerState.WalkingToBuild || villager.currentState == VillagerState.WalkingToRepair))
+                                            {
+                                                // Köylü inşa/tamir edeceği binanın sınırına ulaştı! Doğrudan çalışmaya başlasın
+                                                StopMovementOrder();
+                                                villager.currentState = (villager.currentState == VillagerState.WalkingToRepair)
+                                                    ? VillagerState.Repairing
+                                                    : VillagerState.Building;
+                                                FaceHorizontal(b.transform.position);
+                                                proposedDir = Vector3.zero;
+                                                return;
+                                            }
+
+                                            if (villager.currentState == VillagerState.ReturningToTownCenter && b != null &&
+                                                b.buildingType == RTSBuildingType.TownCenter && b.team == this.team)
+                                            {
+                                                StopMovementOrder();
+                                                FaceHorizontal(b.transform.position);
+                                                proposedDir = Vector3.zero;
+                                                return;
+                                            }
                                         }
 
                                         // 2. Akıllı Engel Teğeti ve Kayma (Fluid Obstacle Steering)
@@ -915,8 +963,11 @@ namespace CSE377.Gameplay
                                         Vector3 toTarget = (targetFlat - currentPos).normalized;
                                         Vector3 tangent = (Vector3.Dot(tRight, toTarget) >= Vector3.Dot(tLeft, toTarget)) ? tRight : tLeft;
 
-                                        // Duvar yüzeyinden hafifçe dışarı iterek (0.30f) sürtünmeyi ve kafa atmayı önle
-                                        proposedDir = (tangent * 0.90f + normal * 0.30f).normalized;
+                                        // Dar geçitlerde duvarlar arası pinpon sekmesini önlemek için paralel sürtünmede hafif itme
+                                        float headOn = Vector3.Dot(proposedDir, normal);
+                                        float normalPush = (headOn > -0.25f) ? 0.14f : 0.26f;
+                                        float tangentPush = (headOn > -0.25f) ? 0.96f : 0.90f;
+                                        proposedDir = (tangent * tangentPush + normal * normalPush).normalized;
                                     }
                                 }
                             }
@@ -1043,10 +1094,8 @@ namespace CSE377.Gameplay
 
                                     if (distToBld <= 2.2f)
                                     {
-                                        isMoving = false;
-                                        commandDestination = Vector3.zero;
+                                        StopMovementOrder();
                                         v.currentState = VillagerState.Building;
-                                        stuckAccumulatedTime = 0f;
                                         return;
                                     }
                                 }

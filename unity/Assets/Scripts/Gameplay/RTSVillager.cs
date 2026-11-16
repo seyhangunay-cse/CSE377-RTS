@@ -66,7 +66,7 @@ namespace CSE377.Gameplay
                 if (dir.sqrMagnitude < 0.01f) dir = Vector3.forward;
 
                 // Tarlanın veya kaynağın 0.5 metre dibinde duracağı çalışma noktası
-                return closest + dir.normalized * 0.5f;
+                return closest + dir.normalized * 0.78f;
             }
 
             return source.transform.position;
@@ -159,8 +159,7 @@ namespace CSE377.Gameplay
                     // İnşaat menziline tam ulaşıldığında (en fazla 1.6m) doğrudan inşaat moduna geç
                     if (distToBuild <= buildRange || (!unit.isMoving && distToBuild <= 2.2f))
                     {
-                        unit.isMoving = false;
-                        unit.commandDestination = Vector3.zero;
+                        unit.StopMovementOrder();
                         currentState = VillagerState.Building;
                         nextBuildFxTime = Time.time + 0.1f;
                     }
@@ -208,9 +207,16 @@ namespace CSE377.Gameplay
 
                     if (distToRep <= buildRange || (!unit.isMoving && distToRep <= 2.2f))
                     {
-                        unit.isMoving = false;
+                        unit.StopMovementOrder();
                         currentState = VillagerState.Repairing;
                         nextBuildFxTime = Time.time + 0.1f;
+
+                        Vector3 repLook = currentBuildingTask.transform.position - transform.position;
+                        repLook.y = 0f;
+                        if (repLook.sqrMagnitude > 0.0001f)
+                        {
+                            transform.rotation = Quaternion.LookRotation(repLook.normalized);
+                        }
                     }
                     break;
 
@@ -231,6 +237,18 @@ namespace CSE377.Gameplay
                     }
 
                     // Saniyede 40 HP onar (Tamirat hızı)
+                    if (unit != null && !unit.isManualMoveOrder && (unit.isMoving || unit.commandDestination != Vector3.zero))
+                    {
+                        unit.StopMovementOrder();
+                    }
+
+                    Vector3 repFace = currentBuildingTask.transform.position - transform.position;
+                    repFace.y = 0f;
+                    if (repFace.sqrMagnitude > 0.0001f)
+                    {
+                        transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(repFace.normalized), Time.deltaTime * 16f);
+                    }
+
                     currentBuildingTask.currentHp += Mathf.RoundToInt(40f * Time.deltaTime);
                     currentBuildingTask.currentHp = Mathf.Min(currentBuildingTask.currentHp, currentBuildingTask.maxHp);
                     currentBuildingTask.CheckDamageVisualState();
@@ -269,16 +287,16 @@ namespace CSE377.Gameplay
                     // Tarlanın / kaynağın yanına (menzile: 1.3m) tam ulaşıldığında hasada başla
                     if (distToResource <= harvestRange || (!unit.isMoving && distToResource <= 1.8f))
                     {
-                        unit.isMoving = false;
+                        unit.StopMovementOrder();
                         currentState = VillagerState.Harvesting;
                         nextHarvestTime = Time.time + 0.15f;
 
-                        // Tarlaya doğru dön
-                        Vector3 faceDir = (currentResource.transform.position - transform.position).normalized;
-                        faceDir.y = 0;
-                        if (faceDir != Vector3.zero)
+                        // Kaynağa doğrudan dön
+                        Vector3 faceDir = currentResource.transform.position - transform.position;
+                        faceDir.y = 0f;
+                        if (faceDir.sqrMagnitude > 0.0001f)
                         {
-                            transform.rotation = Quaternion.LookRotation(faceDir);
+                            transform.rotation = Quaternion.LookRotation(faceDir.normalized);
                         }
                     }
                     break;
@@ -306,12 +324,18 @@ namespace CSE377.Gameplay
                         return;
                     }
 
-                    // Tarlaya / kaynağa dönük kal
-                    Vector3 lookFarm = (currentResource.transform.position - transform.position).normalized;
-                    lookFarm.y = 0;
-                    if (lookFarm != Vector3.zero)
+                    if (unit != null && !unit.isManualMoveOrder && (unit.isMoving || unit.commandDestination != Vector3.zero))
                     {
-                        transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(lookFarm), Time.deltaTime * 10f);
+                        unit.StopMovementOrder();
+                    }
+
+                    // Tarlaya / kaynağa dönük kal
+                    Vector3 lookFarm = currentResource.transform.position - transform.position;
+                    lookFarm.y = 0f;
+                    if (lookFarm.sqrMagnitude > 0.0001f)
+                    {
+                        lookFarm.Normalize();
+                        transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(lookFarm), Time.deltaTime * 16f);
                     }
 
                     // Hasat aralığı
@@ -351,7 +375,7 @@ namespace CSE377.Gameplay
 
                     if (distToTownCenter <= depositRange || (!unit.isMoving && distToTownCenter <= 3.2f))
                     {
-                        unit.isMoving = false;
+                        unit.StopMovementOrder();
                         DepositResources();
                     }
                     else if (!unit.isMoving)
