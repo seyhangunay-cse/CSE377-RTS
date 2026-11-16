@@ -375,21 +375,40 @@ namespace CSE377.Gameplay
         }
 
         /// <summary>
-        /// Yeni bir Photon Odası açar (1. Oyuncu / Host / Mavi Krallık + Mavi AI Komutan).
+        /// Açık odalarla çakışmayan benzersiz bir otomatik oda kodu üretir (Örn: ODA-4821).
         /// </summary>
-        public void CreatePhotonRoom(string playerName, string roomCode)
+        public string GenerateUniqueRoomCode()
+        {
+            RefreshOpenRoomsRegistry();
+            for (int i = 0; i < 30; i++)
+            {
+                string candidate = $"ODA-{UnityEngine.Random.Range(1000, 9999)}";
+                bool exists = activeOpenRooms.Exists(r => r != null && string.Equals(r.roomName, candidate, StringComparison.OrdinalIgnoreCase));
+                if (!exists) return candidate;
+            }
+            return $"ODA-{DateTime.UtcNow.Millisecond:D3}{UnityEngine.Random.Range(1, 9)}";
+        }
+
+        /// <summary>
+        /// Yeni bir Photon Odası açar (1. Oyuncu / Host / Mavi Krallık + Mavi AI Komutan).
+        /// Oda kodu belirtilmezse sistem tarafından otomatik benzersiz kod atanır.
+        /// </summary>
+        public void CreatePhotonRoom(string playerName, string roomCode = null)
         {
             if (isRoomConnected)
             {
                 RemoveOwnRoomFromRegistry();
             }
             if (!string.IsNullOrWhiteSpace(playerName)) localPlayerName = playerName.Trim();
+            string finalRoomCode = string.IsNullOrWhiteSpace(roomCode)
+                ? GenerateUniqueRoomCode()
+                : roomCode.Trim().ToUpperInvariant();
             hostPlayerName = localPlayerName;
             hostInstanceId = clientInstanceId;
             guestPlayerName = "";
             guestInstanceId = "";
             lastRemoteHeartbeatTime = -999f;
-            ConnectToPhotonRoom(roomCode, UnitTeam.Player);
+            ConnectToPhotonRoom(finalRoomCode, UnitTeam.Player);
         }
 
         /// <summary>

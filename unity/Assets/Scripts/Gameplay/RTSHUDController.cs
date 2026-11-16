@@ -401,10 +401,8 @@ namespace CSE377.Gameplay
                         string pName = (mpPlayerNameInput != null && !string.IsNullOrWhiteSpace(mpPlayerNameInput.text))
                             ? mpPlayerNameInput.text.Trim()
                             : RTSNetworkSyncManager.Instance.localPlayerName;
-                        string rCode = (startScreenRoomInput != null && !string.IsNullOrWhiteSpace(startScreenRoomInput.text))
-                            ? startScreenRoomInput.text.Trim().ToUpperInvariant()
-                            : "ODA-101";
-                        RTSNetworkSyncManager.Instance.CreatePhotonRoom(pName, rCode);
+                        // Oda kodu oyuncu tarafından değil, sistem tarafından otomatik benzersiz olarak atanır
+                        RTSNetworkSyncManager.Instance.CreatePhotonRoom(pName);
                     }
                     if (activeRoomModal != null)
                     {

@@ -2468,32 +2468,22 @@ namespace CSE377.Gameplay
             var mpTitle = CreateUIText(mpBox.transform, "MpTitle", "🌐  2 KİŞİLİK ODA LİSTESİ & ODA AÇMA EKRANI  🌐", 21, new Color(1.0f, 0.88f, 0.38f), medievalTitleFont, new Vector2(0.5f, 0.895f), new Vector2(680, 30));
             mpTitle.fontStyle = FontStyle.Bold;
 
-            // 1. Satır: Kullanıcı Adı (Komutan Adı) & Oda Açma / Katılma
-            var userLbl = CreateUIText(mpBox.transform, "UserLabel", "👤 KOMUTAN ADI (KULLANICI ADI):", 11, new Color(0.95f, 0.88f, 0.65f), medievalTitleFont, new Vector2(0.22f, 0.815f), new Vector2(240, 18));
+            // 1. Satır: Kullanıcı Adı (Komutan Adı) & Otomatik Oda Açma
+            var userLbl = CreateUIText(mpBox.transform, "UserLabel", "👤 KOMUTAN ADI (KULLANICI ADI):", 11, new Color(0.95f, 0.88f, 0.65f), medievalTitleFont, new Vector2(0.30f, 0.815f), new Vector2(360, 18));
             userLbl.alignment = TextAnchor.MiddleLeft;
             userLbl.fontStyle = FontStyle.Bold;
 
-            var playerNameInput = CreateUIInputField(mpBox.transform, "PlayerNameInput", "Kullanıcı Adınız...", medievalBodyFont, new Vector2(0.22f, 0.75f), new Vector2(240, 36), new Color(0.04f, 0.05f, 0.08f, 0.98f));
+            var playerNameInput = CreateUIInputField(mpBox.transform, "PlayerNameInput", "Kullanıcı Adınız...", medievalBodyFont, new Vector2(0.30f, 0.75f), new Vector2(360, 38), new Color(0.04f, 0.05f, 0.08f, 0.98f));
             playerNameInput.text = RTSNetworkSyncManager.Instance != null ? RTSNetworkSyncManager.Instance.localPlayerName : "Komutan_101";
             var pNameBorder = playerNameInput.gameObject.AddComponent<Outline>();
             pNameBorder.effectColor = new Color(0.75f, 0.60f, 0.25f, 0.85f);
 
-            var roomLbl = CreateUIText(mpBox.transform, "RoomLabel", "🏰 ODA ADI / KODU (Yeni Oda Aç veya Kodla Gir):", 11, new Color(0.95f, 0.88f, 0.65f), medievalTitleFont, new Vector2(0.66f, 0.815f), new Vector2(400, 18));
-            roomLbl.alignment = TextAnchor.MiddleLeft;
-            roomLbl.fontStyle = FontStyle.Bold;
-
-            var roomInput = CreateUIInputField(mpBox.transform, "RoomCodeInput", "Oda Adı (Örn: ODA-101)...", medievalBodyFont, new Vector2(0.51f, 0.75f), new Vector2(170, 36), new Color(0.04f, 0.05f, 0.08f, 0.98f));
-            roomInput.text = "ODA-101";
-            var roomInputBorder = roomInput.gameObject.AddComponent<Outline>();
-            roomInputBorder.effectColor = new Color(0.75f, 0.60f, 0.25f, 0.85f);
-
-            var createRoomBtn = CreateUIButton(mpBox.transform, "CreateRoomBtn", "➕ YENİ ODA AÇ", medievalTitleFont, new Vector2(0.715f, 0.75f), new Vector2(124, 36), new Color(0.14f, 0.46f, 0.26f));
+            var createRoomBtn = CreateUIButton(mpBox.transform, "CreateRoomBtn", "➕ YENİ ODA AÇ (Otomatik Kod)", medievalTitleFont, new Vector2(0.74f, 0.75f), new Vector2(280, 38), new Color(0.14f, 0.46f, 0.26f));
             var createRoomTxt = createRoomBtn.GetComponentInChildren<Text>();
-            if (createRoomTxt != null) { createRoomTxt.fontSize = 11; createRoomTxt.fontStyle = FontStyle.Bold; }
+            if (createRoomTxt != null) { createRoomTxt.fontSize = 12; createRoomTxt.fontStyle = FontStyle.Bold; }
 
-            var joinRoomBtn = CreateUIButton(mpBox.transform, "JoinRoomBtn", "➡️ ODAYA KATIL", medievalTitleFont, new Vector2(0.875f, 0.75f), new Vector2(114, 36), new Color(0.16f, 0.34f, 0.62f));
-            var joinRoomTxt = joinRoomBtn.GetComponentInChildren<Text>();
-            if (joinRoomTxt != null) { joinRoomTxt.fontSize = 11; joinRoomTxt.fontStyle = FontStyle.Bold; }
+            InputField roomInput = null;
+            Button joinRoomBtn = null;
 
             // 2. Bölüm: AÇIK ODALAR LİSTESİ (Aktif Lobi Odaları Tarayıcısı)
             var listHdr = CreateUIText(mpBox.transform, "RoomsListHeader", "📋 AÇIK ODALAR LİSTESİ (Katılmak İstediğiniz Odaya Tıklayın):", 12, new Color(1f, 0.88f, 0.42f), medievalTitleFont, new Vector2(0.42f, 0.64f), new Vector2(520, 20));
