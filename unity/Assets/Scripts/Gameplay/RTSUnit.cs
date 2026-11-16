@@ -286,12 +286,14 @@ namespace CSE377.Gameplay
         }
 
         private readonly System.Collections.Generic.Queue<Vector3> moveWaypoints = new System.Collections.Generic.Queue<Vector3>();
+        private RTSBuilding currentIgnoreBuilding;
 
         public void MoveTo(Vector3 destination, bool isManual = true, float forcedCrossingX = float.NaN, RTSBuilding ignoreBuilding = null)
         {
             if (currentHp <= 0 || isDead) return;
 
             EnsurePhysics();
+            currentIgnoreBuilding = ignoreBuilding;
 
             float clampedX = Mathf.Clamp(destination.x, -PlayableMapLimit, PlayableMapLimit);
             float clampedZ = Mathf.Clamp(destination.z, -PlayableMapLimit, PlayableMapLimit);
@@ -415,117 +417,12 @@ namespace CSE377.Gameplay
         }
 
         /// <summary>
-        /// Hedefe doğru intikal ederken aradaki masif binaların (özellikle Karargah, Kışla, Ahırlar vb.)
-        /// etrafından dolanacak emniyetli köşe geçiş noktalarını (Waypoints) hesaplar.
+        /// Hedefe doğru intikal ederken aradaki tüm binaların (Şehir Merkezi, Kışla, Ev, Kale vb.)
+        /// ve nehrin etrafından dolanacak en kısa A* yol noktalarını (Waypoints) hesaplar.
         /// </summary>
         private System.Collections.Generic.List<Vector3> CalculateBuildingAvoidancePath(Vector3 start, Vector3 target, RTSBuilding ignoreBuilding = null)
         {
-            var waypoints = new System.Collections.Generic.List<Vector3>();
-            Vector3 current = start;
-
-            // En fazla 3 ardışık bina engeli aşma adımı (Sonsuz döngü koruması)
-            for (int step = 0; step < 3; step++)
-            {
-                RTSBuilding blockingBuilding = null;
-                float closestDist = float.MaxValue;
-                Vector3 blockCenter = Vector3.zero;
-                Vector3 blockExtents = Vector3.zero;
-
-                foreach (var b in RTSBuilding.AllBuildings)
-                {
-                    if (b == null || !b.gameObject.activeInHierarchy || b == ignoreBuilding) continue;
-
-                    Collider bCol = b.GetComponent<Collider>();
-                    Vector3 bCenter = (bCol != null) ? bCol.bounds.center : b.transform.position;
-                    Vector3 bExtents = (bCol != null) ? bCol.bounds.extents : new Vector3(3.4f, 4f, 3.4f);
-
-                    // Hedef nokta bu binanın kendisiyse engelleme sayma
-                    float distTarget = Vector3.Distance(new Vector3(target.x, 0, target.z), new Vector3(bCenter.x, 0, bCenter.z));
-                    if (distTarget <= Mathf.Max(bExtents.x, bExtents.z) + 0.9f) continue;
-
-                    float clearance = 2.0f;
-                    float minX = bCenter.x - bExtents.x - clearance;
-                    float maxX = bCenter.x + bExtents.x + clearance;
-                    float minZ = bCenter.z - bExtents.z - clearance;
-                    float maxZ = bCenter.z + bExtents.z + clearance;
-
-                    if (LineIntersectsAABB(current.x, current.z, target.x, target.z, minX, maxX, minZ, maxZ, bCenter.x, bCenter.z))
-                    {
-                        float d = Vector3.Distance(current, bCenter);
-                        if (d < closestDist)
-                        {
-                            closestDist = d;
-                            blockingBuilding = b;
-                            blockCenter = bCenter;
-                            blockExtents = bExtents;
-                        }
-                    }
-                }
-
-                if (blockingBuilding == null) break;
-
-                float clr = 2.0f;
-                float bMinX = blockCenter.x - blockExtents.x - clr;
-                float bMaxX = blockCenter.x + blockExtents.x + clr;
-                float bMinZ = blockCenter.z - blockExtents.z - clr;
-                float bMaxZ = blockCenter.z + blockExtents.z + clr;
-
-                Vector3 cNW = new Vector3(bMinX, current.y, bMaxZ);
-                Vector3 cNE = new Vector3(bMaxX, current.y, bMaxZ);
-                Vector3 cSW = new Vector3(bMinX, current.y, bMinZ);
-                Vector3 cSE = new Vector3(bMaxX, current.y, bMinZ);
-
-                // Olası dolanma güzergahlarını topla
-                var candidateRoutes = new System.Collections.Generic.List<System.Collections.Generic.List<Vector3>>();
-
-                // 1. Batı Hattı (West Route)
-                if (current.z >= blockCenter.z && target.z <= blockCenter.z)
-                    candidateRoutes.Add(new System.Collections.Generic.List<Vector3> { cNW, cSW });
-                else if (current.z <= blockCenter.z && target.z >= blockCenter.z)
-                    candidateRoutes.Add(new System.Collections.Generic.List<Vector3> { cSW, cNW });
-                else
-                    candidateRoutes.Add(new System.Collections.Generic.List<Vector3> { (current.z >= blockCenter.z) ? cNW : cSW });
-
-                // 2. Doğu Hattı (East Route)
-                if (current.z >= blockCenter.z && target.z <= blockCenter.z)
-                    candidateRoutes.Add(new System.Collections.Generic.List<Vector3> { cNE, cSE });
-                else if (current.z <= blockCenter.z && target.z >= blockCenter.z)
-                    candidateRoutes.Add(new System.Collections.Generic.List<Vector3> { cSE, cNE });
-                else
-                    candidateRoutes.Add(new System.Collections.Generic.List<Vector3> { (current.z >= blockCenter.z) ? cNE : cSE });
-
-                // 3. Kuzey Hattı (North Route)
-                if (current.x <= blockCenter.x && target.x >= blockCenter.x)
-                    candidateRoutes.Add(new System.Collections.Generic.List<Vector3> { cNW, cNE });
-                else if (current.x >= blockCenter.x && target.x <= blockCenter.x)
-                    candidateRoutes.Add(new System.Collections.Generic.List<Vector3> { cNE, cNW });
-
-                // 4. Güney Hattı (South Route)
-                if (current.x <= blockCenter.x && target.x >= blockCenter.x)
-                    candidateRoutes.Add(new System.Collections.Generic.List<Vector3> { cSW, cSE });
-                else if (current.x >= blockCenter.x && target.x <= blockCenter.x)
-                    candidateRoutes.Add(new System.Collections.Generic.List<Vector3> { cSE, cSW });
-
-                // En kısa ve akıcı rotayı seç
-                System.Collections.Generic.List<Vector3> bestRoute = candidateRoutes[0];
-                float minLength = float.MaxValue;
-
-                foreach (var route in candidateRoutes)
-                {
-                    float len = GetPathLength(current, route, target);
-                    if (len < minLength)
-                    {
-                        minLength = len;
-                        bestRoute = route;
-                    }
-                }
-
-                waypoints.AddRange(bestRoute);
-                current = bestRoute[bestRoute.Count - 1];
-            }
-
-            waypoints.Add(target);
-            return waypoints;
+            return RTSPathfinder.FindPath(start, target, this.team, ignoreBuilding);
         }
 
         private static float GetPathLength(Vector3 start, System.Collections.Generic.List<Vector3> corners, Vector3 end)
@@ -1091,10 +988,15 @@ namespace CSE377.Gameplay
                         {
                             stuckAccumulatedTime += stuckCheckTimer;
 
-                            // Eğer bir bina yüzeyine takılı kaldıysa, binanın etrafından dolanacak rotayı otomatik yeniden hesapla!
-                            if (stuckAccumulatedTime >= 1.8f)
+                            // Eğer bir bina yüzeyine takılı kaldıysa, binanın etrafından dolanacak A* rotasını otomatik yeniden hesapla!
+                            if (stuckAccumulatedTime >= 1.2f)
                             {
-                                MoveTo(targetDestination, isManual: isManualMoveOrder);
+                                var savedTargetUnit = currentAttackTarget;
+                                var savedTargetBld = currentAttackBuilding;
+                                Vector3 finalDest = (commandDestination != Vector3.zero) ? commandDestination : targetDestination;
+                                MoveTo(finalDest, isManual: isManualMoveOrder, forcedCrossingX: float.NaN, ignoreBuilding: currentIgnoreBuilding ?? savedTargetBld);
+                                currentAttackTarget = savedTargetUnit;
+                                currentAttackBuilding = savedTargetBld;
                                 stuckAccumulatedTime = 0f;
                             }
                             else

@@ -81,7 +81,7 @@ namespace CSE377.Gameplay
                 carryingType = source.resourceType;
                 currentState = VillagerState.WalkingToResource;
                 Vector3 harvestSpot = GetHarvestStandPosition(source);
-                unit.MoveTo(harvestSpot, isManual: false);
+                unit.MoveTo(harvestSpot, isManual: false, forcedCrossingX: float.NaN, ignoreBuilding: source.GetComponent<RTSBuilding>());
             }
         }
 
@@ -419,7 +419,7 @@ namespace CSE377.Gameplay
             {
                 currentState = VillagerState.WalkingToResource;
                 Vector3 returnSpot = GetHarvestStandPosition(currentResource);
-                unit.MoveTo(returnSpot, isManual: false);
+                unit.MoveTo(returnSpot, isManual: false, forcedCrossingX: float.NaN, ignoreBuilding: currentResource.GetComponent<RTSBuilding>());
             }
             else
             {
