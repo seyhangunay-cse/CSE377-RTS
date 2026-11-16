@@ -26,6 +26,7 @@ namespace CSE377.Gameplay
         public bool isPlacingBuilding = false;
         private RTSBuildingType placingType;
         private GameObject placementGhost;
+        private float placingRotationY = 0f;
 
         [Header("Seçim Kutusu Görseli")]
         public Color boxFillColor = new Color(0.1f, 0.9f, 0.2f, 0.15f);
@@ -73,6 +74,7 @@ namespace CSE377.Gameplay
 
             isPlacingBuilding = true;
             placingType = type;
+            placingRotationY = 0f;
 
             if (type == RTSBuildingType.DefenseTower)
             {
@@ -168,11 +170,12 @@ namespace CSE377.Gameplay
             GetBuildingPlacementInfo(type, out string bName, out string bCost, out string bDesc);
             if (RTSHUDController.Instance != null)
             {
+                string rotHint = IsFortificationType(type) ? "   •   [R]: 90° Döndür" : "";
                 RTSHUDController.Instance.ShowPlacementBanner(
                     $"{bName.ToUpper()}  (Maliyet: {bCost})",
-                    $"{bDesc}   •   [Sol Tık]: İnşa Et   •   [Sağ Tık / ESC]: İptal"
+                    $"{bDesc}   •   [Sol Tık]: İnşa Et{rotHint}   •   [Sağ Tık / ESC]: İptal"
                 );
-                RTSHUDController.Instance.SetAiStatus($"[İNŞAAT EMRİ] {bName} ({bCost})  •  {bDesc}  |  Yerleştir: [Sol Tık]  •  İptal: [Sağ Tık / ESC]", new Color(1f, 0.85f, 0.3f));
+                RTSHUDController.Instance.SetAiStatus($"[İNŞAAT EMRİ] {bName} ({bCost})  •  {bDesc}  |  Yerleştir: [Sol Tık]{rotHint}  •  İptal: [Sağ Tık / ESC]", new Color(1f, 0.85f, 0.3f));
             }
         }
 
@@ -257,33 +260,47 @@ namespace CSE377.Gameplay
         {
             if (type == RTSBuildingType.StoneWall) return 2.0f;
             if (type == RTSBuildingType.CityGate) return 3.0f;
-            if (type == RTSBuildingType.DefenseTower) return 1.2f;
+            if (type == RTSBuildingType.DefenseTower) return 1.0f;
             return 2.0f;
         }
 
-        private Vector3 SnapFortificationPosition(Vector3 rawPos, RTSBuildingType newType)
+        private static Vector2 GetFortificationHalfExtents(RTSBuildingType type, float rotY)
+        {
+            if (type == RTSBuildingType.DefenseTower) return new Vector2(1.0f, 1.0f);
+            float halfW = GetFortificationHalfWidth(type);
+            float halfT = 0.7f;
+            bool rotated90 = Mathf.Abs(Mathf.Sin(rotY * Mathf.Deg2Rad)) > 0.707f;
+            return rotated90 ? new Vector2(halfT, halfW) : new Vector2(halfW, halfT);
+        }
+
+        private Vector3 SnapFortificationPosition(Vector3 rawPos, RTSBuildingType newType, ref float targetRotY)
         {
             if (!IsFortificationType(newType)) return rawPos;
 
             float newHalfW = GetFortificationHalfWidth(newType);
             Vector3 bestSnapped = rawPos;
             float bestSnapDist = 3.2f; // Mıknatıs hizalama yarıçapı
+            float bestRotY = targetRotY;
 
             foreach (var b in RTSBuilding.AllBuildings)
             {
                 if (b == null || b.currentHp <= 0 || !IsFortificationType(b.buildingType)) continue;
 
-                float existHalfW = GetFortificationHalfWidth(b.buildingType);
-                float joinOffset = existHalfW + newHalfW;
+                Vector2 existExt = GetFortificationHalfExtents(b.buildingType, b.transform.eulerAngles.y);
+                float joinOffsetX = existExt.x + newHalfW;
+                float joinOffsetZ = existExt.y + newHalfW;
 
-                Vector3 leftCandidate = new Vector3(b.transform.position.x - joinOffset, rawPos.y, b.transform.position.z);
-                Vector3 rightCandidate = new Vector3(b.transform.position.x + joinOffset, rawPos.y, b.transform.position.z);
+                Vector3 leftCandidate = new Vector3(b.transform.position.x - joinOffsetX, rawPos.y, b.transform.position.z);
+                Vector3 rightCandidate = new Vector3(b.transform.position.x + joinOffsetX, rawPos.y, b.transform.position.z);
+                Vector3 backCandidate = new Vector3(b.transform.position.x, rawPos.y, b.transform.position.z - joinOffsetZ);
+                Vector3 forwardCandidate = new Vector3(b.transform.position.x, rawPos.y, b.transform.position.z + joinOffsetZ);
 
                 float dLeft = Vector2.Distance(new Vector2(rawPos.x, rawPos.z), new Vector2(leftCandidate.x, leftCandidate.z));
                 if (dLeft < bestSnapDist)
                 {
                     bestSnapDist = dLeft;
                     bestSnapped = leftCandidate;
+                    if (newType != RTSBuildingType.DefenseTower) bestRotY = 0f;
                 }
 
                 float dRight = Vector2.Distance(new Vector2(rawPos.x, rawPos.z), new Vector2(rightCandidate.x, rightCandidate.z));
@@ -291,9 +308,27 @@ namespace CSE377.Gameplay
                 {
                     bestSnapDist = dRight;
                     bestSnapped = rightCandidate;
+                    if (newType != RTSBuildingType.DefenseTower) bestRotY = 0f;
+                }
+
+                float dBack = Vector2.Distance(new Vector2(rawPos.x, rawPos.z), new Vector2(backCandidate.x, backCandidate.z));
+                if (dBack < bestSnapDist)
+                {
+                    bestSnapDist = dBack;
+                    bestSnapped = backCandidate;
+                    if (newType != RTSBuildingType.DefenseTower) bestRotY = 90f;
+                }
+
+                float dForward = Vector2.Distance(new Vector2(rawPos.x, rawPos.z), new Vector2(forwardCandidate.x, forwardCandidate.z));
+                if (dForward < bestSnapDist)
+                {
+                    bestSnapDist = dForward;
+                    bestSnapped = forwardCandidate;
+                    if (newType != RTSBuildingType.DefenseTower) bestRotY = 90f;
                 }
             }
 
+            targetRotY = bestRotY;
             bestSnapped.x = Mathf.Clamp(bestSnapped.x, -64f, 64f);
             bestSnapped.z = Mathf.Clamp(bestSnapped.z, -64f, 64f);
             return bestSnapped;
@@ -301,6 +336,11 @@ namespace CSE377.Gameplay
 
         private void HandleBuildingPlacement()
         {
+            if (IsFortificationType(placingType) && Input.GetKeyDown(KeyCode.R))
+            {
+                placingRotationY = (placingRotationY < 45f) ? 90f : 0f;
+            }
+
             Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
             if (Physics.Raycast(ray, out RaycastHit hit, 200f))
             {
@@ -310,12 +350,13 @@ namespace CSE377.Gameplay
                     Mathf.Clamp(hit.point.z, -64f, 64f)
                 );
 
-                // Taş Duvar, Şehir Kapısı ve Savunma Kulesi yan yana getirildiğinde uç uca tam kenetlenmesi için otomatik hizala (Snap)
-                clampedPlacePos = SnapFortificationPosition(clampedPlacePos, placingType);
+                // Taş Duvar, Şehir Kapısı ve Savunma Kulesi yan yana getirildiğinde 4 yönde uç uca tam kenetlenmesi için otomatik hizala (Snap)
+                clampedPlacePos = SnapFortificationPosition(clampedPlacePos, placingType, ref placingRotationY);
 
                 if (placementGhost != null)
                 {
                     placementGhost.transform.position = clampedPlacePos + Vector3.up * 1f;
+                    placementGhost.transform.rotation = Quaternion.Euler(0f, placingRotationY, 0f);
                 }
 
                 bool isBlockedByObject = false;
@@ -328,10 +369,11 @@ namespace CSE377.Gameplay
                     if (placingFortification && IsFortificationType(b.buildingType))
                     {
                         // Tahkimat parçaları (Duvar + Kapı + Kule) uç uca birleşebilmeli; sadece üst üste binmeyi engelle
-                        float combinedHalfX = GetFortificationHalfWidth(b.buildingType) + GetFortificationHalfWidth(placingType);
+                        Vector2 existExt = GetFortificationHalfExtents(b.buildingType, b.transform.eulerAngles.y);
+                        Vector2 newExt = GetFortificationHalfExtents(placingType, placingRotationY);
                         float dx = Mathf.Abs(place2D.x - b.transform.position.x);
                         float dz = Mathf.Abs(place2D.y - b.transform.position.z);
-                        if (dx < combinedHalfX - 0.35f && dz < 1.35f)
+                        if (dx < (existExt.x + newExt.x) - 0.25f && dz < (existExt.y + newExt.y) - 0.25f)
                         {
                             isBlockedByObject = true;
                             break;
@@ -440,8 +482,8 @@ namespace CSE377.Gameplay
 
             // Temeli at (Yerel oyuncunun takımına göre Mavi veya Kırmızı)
             UnitTeam myTeam = RTSGameManager.LocalPlayerTeam;
-            var building = RTSBuilding.SpawnBuilding(placingType, placePosition, myTeam, startBuilt: false);
-            RTSNetworkSyncManager.Instance?.BroadcastBuildingSpawn(placingType, placePosition, myTeam, false);
+            var building = RTSBuilding.SpawnBuilding(placingType, placePosition, myTeam, startBuilt: false, rotationY: placingRotationY);
+            RTSNetworkSyncManager.Instance?.BroadcastBuildingSpawn(placingType, placePosition, myTeam, false, placingRotationY);
 
             // Seçili köylüleri inşaata gönder
             bool assignedVillager = false;

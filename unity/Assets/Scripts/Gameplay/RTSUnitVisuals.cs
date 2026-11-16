@@ -343,11 +343,32 @@ namespace CSE377.Gameplay
             {
                 var go = Object.Instantiate(trebuchetPrefab, root);
                 go.transform.localPosition = Vector3.zero;
+                go.transform.localRotation = Quaternion.identity;
                 go.transform.localScale = Vector3.one * 1.5f;
 
                 foreach (var col in go.GetComponentsInChildren<Collider>(true))
                 {
                     Object.DestroyImmediate(col);
+                }
+
+                // Kenney siege-trebuchet modelinin uzun ekseni X'teyse ileri yön (+Z) ile hizalamak için 90 derece döndür
+                var renderers = go.GetComponentsInChildren<Renderer>(true);
+                if (renderers != null && renderers.Length > 0)
+                {
+                    Bounds b = renderers[0].bounds;
+                    for (int i = 1; i < renderers.Length; i++) b.Encapsulate(renderers[i].bounds);
+                    if (b.size.x > b.size.z * 1.15f)
+                    {
+                        go.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+                    }
+                    // Zemine tam oturması için alt sınırı Y=0'a hizala
+                    b = renderers[0].bounds;
+                    for (int i = 1; i < renderers.Length; i++) b.Encapsulate(renderers[i].bounds);
+                    float minLocalY = b.min.y - root.position.y;
+                    if (Mathf.Abs(minLocalY) > 0.02f)
+                    {
+                        go.transform.localPosition = new Vector3(0f, -minLocalY, 0f);
+                    }
                 }
                 return;
             }

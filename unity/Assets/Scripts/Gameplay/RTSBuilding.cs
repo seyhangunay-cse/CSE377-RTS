@@ -839,14 +839,14 @@ namespace CSE377.Gameplay
 
         private static void ConstructDefenseTower3D(Transform parent, UnitTeam team)
         {
-            // 1. Masif Taş Taban (Y: 0.0 -> 1.21m, Genişlik: 2.0m)
-            InstantiatePart("tower-square-base", parent, Vector3.zero, Quaternion.identity, new Vector3(2.0f, 1.2f, 2.0f));
+            // 1. Masif Taş Taban (Y: 0.0 -> 1.50m, Genişlik: 2.0m x 2.0m — Duvar ve Şehir Kapısı ile aynı taban yüksekliği ve sıfır boşluk)
+            InstantiatePart("tower-square-base", parent, Vector3.zero, Quaternion.identity, new Vector3(2.0f, 1.5f, 2.0f));
 
-            // 2. Yüksek Siperlikli Gözetleme Kulesi Gövdesi (Boşluksuz: Y = 1.20m, Zirve: 3.82m)
-            InstantiatePart("tower-square", parent, new Vector3(0, 1.20f, 0), Quaternion.identity, new Vector3(1.8f, 2.0f, 1.8f));
+            // 2. Yüksek Siperlikli Gözetleme Kulesi Gövdesi (Boşluksuz: Y = 1.50m, Zirve: 4.10m)
+            InstantiatePart("tower-square", parent, new Vector3(0, 1.50f, 0), Quaternion.identity, new Vector3(1.8f, 2.0f, 1.8f));
 
-            // 3. Zirve Mazgallı Siperlik & Nöbetçi Korkulukları (Boşluksuz: Y = 3.80m, Zirve: 4.16m)
-            InstantiatePart("tower-square-top", parent, new Vector3(0, 3.80f, 0), Quaternion.identity, new Vector3(1.85f, 1.2f, 1.85f));
+            // 3. Zirve Mazgallı Siperlik & Nöbetçi Korkulukları (Boşluksuz: Y = 4.10m, Zirve: 4.46m)
+            InstantiatePart("tower-square-top", parent, new Vector3(0, 4.10f, 0), Quaternion.identity, new Vector3(1.85f, 1.2f, 1.85f));
         }
 
         private static void ConstructFarm3D(Transform parent, UnitTeam team)
@@ -916,8 +916,12 @@ namespace CSE377.Gameplay
             InstantiatePart("wall-half", parent, new Vector3(0, 2.22f, 0), Quaternion.identity, new Vector3(1.6f, 0.8f, 1.25f));
 
             // 4. İki Yan Masif Muhafız Burçları (X = -2.25 ve +2.25 -> Kapıyı -3.0 ile +3.0 Arasına Tam Kilitler)
-            InstantiatePart("wall-corner-half-tower", parent, new Vector3(-2.25f, 0, 0), Quaternion.identity, new Vector3(1.5f, 1.75f, 1.5f));
-            InstantiatePart("wall-corner-half-tower", parent, new Vector3( 2.25f, 0, 0), Quaternion.Euler(0, 180f, 0), new Vector3(1.5f, 1.75f, 1.5f));
+            InstantiatePart("wall-corner-half-tower", parent, new Vector3(-2.25f, 0, 0), Quaternion.identity, new Vector3(1.5f, 1.65f, 1.4f));
+            InstantiatePart("wall-corner-half-tower", parent, new Vector3( 2.25f, 0, 0), Quaternion.Euler(0, 180f, 0), new Vector3(1.5f, 1.65f, 1.4f));
+
+            // Kapı uçlarında Taş Duvar ile sıfır boşluklu birleşme sağlayan kenetleme sütunları (X = ±3.0m)
+            InstantiatePart("wall-pillar", parent, new Vector3(-3.0f, 0, 0), Quaternion.identity, new Vector3(1.2f, 1.55f, 1.3f));
+            InstantiatePart("wall-pillar", parent, new Vector3( 3.0f, 0, 0), Quaternion.identity, new Vector3(1.2f, 1.55f, 1.3f));
 
             // 5. Muhafız Burçları Flamaları
             var fLeft = InstantiatePart("flag-pennant", parent, new Vector3(-2.25f, 2.6f, 0), Quaternion.identity, new Vector3(1.2f, 1.2f, 1.2f));
@@ -1146,11 +1150,12 @@ namespace CSE377.Gameplay
         /// <summary>
         /// Haritada yeni bir 3D Kenney CastleKit modüler binası inşa eder.
         /// </summary>
-        public static RTSBuilding SpawnBuilding(RTSBuildingType type, Vector3 position, UnitTeam team, bool startBuilt = false)
+        public static RTSBuilding SpawnBuilding(RTSBuildingType type, Vector3 position, UnitTeam team, bool startBuilt = false, float rotationY = 0f)
         {
             string bName = type.ToString();
             GameObject bGo = new GameObject($"Building_{bName}");
             bGo.transform.position = position;
+            bGo.transform.rotation = Quaternion.Euler(0f, rotationY, 0f);
 
             // 3D Modüler görsel kök nesnesi
             GameObject vGo = new GameObject("VisualRoot");

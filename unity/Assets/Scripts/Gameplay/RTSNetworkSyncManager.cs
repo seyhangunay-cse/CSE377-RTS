@@ -1149,6 +1149,7 @@ namespace CSE377.Gameplay
                         float y = float.Parse(parts[2], CultureInfo.InvariantCulture);
                         float z = float.Parse(parts[3], CultureInfo.InvariantCulture);
                         bool startBuilt = parts[4] == "1";
+                        float rotY = (parts.Length >= 6) ? float.Parse(parts[5], CultureInfo.InvariantCulture) : 0f;
 
                         bool alreadyExists = false;
                         foreach (var existing in RTSBuilding.AllBuildings)
@@ -1165,7 +1166,7 @@ namespace CSE377.Gameplay
 
                         if (!alreadyExists)
                         {
-                            var bld = RTSBuilding.SpawnBuilding(bType, new Vector3(x, y, z), senderTeam, startBuilt);
+                            var bld = RTSBuilding.SpawnBuilding(bType, new Vector3(x, y, z), senderTeam, startBuilt, rotY);
                             if (!startBuilt && bld != null)
                             {
                                 AssignRemoteVillagerToBuild(senderTeam, bld);
@@ -1716,10 +1717,10 @@ namespace CSE377.Gameplay
         /// <summary>
         /// Manuel bina inşaatını Photon odasındaki diğer oyuncuya yayınlar.
         /// </summary>
-        public void BroadcastBuildingSpawn(RTSBuildingType bType, Vector3 pos, UnitTeam team, bool startBuilt)
+        public void BroadcastBuildingSpawn(RTSBuildingType bType, Vector3 pos, UnitTeam team, bool startBuilt, float rotationY = 0f)
         {
             if (!isMultiplayerMode || !isRoomConnected) return;
-            string payload = string.Format(CultureInfo.InvariantCulture, "{0}|{1:F2}|{2:F2}|{3:F2}|{4}", bType, pos.x, pos.y, pos.z, startBuilt ? 1 : 0);
+            string payload = string.Format(CultureInfo.InvariantCulture, "{0}|{1:F2}|{2:F2}|{3:F2}|{4}|{5:F1}", bType, pos.x, pos.y, pos.z, startBuilt ? 1 : 0, rotationY);
             SendRawPacket("SPAWN_BLD", payload);
         }
 
