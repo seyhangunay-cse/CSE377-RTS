@@ -385,9 +385,20 @@ namespace CSE377.Gameplay
 
             if (mpPlayerNameInput != null)
             {
+                mpPlayerNameInput.onValueChanged.AddListener((val) =>
+                {
+                    if (!string.IsNullOrWhiteSpace(val))
+                    {
+                        RTSNetworkSyncManager.Instance?.SetPlayerName(val);
+                    }
+                    UpdatePhotonRoomLobbyUI();
+                });
                 mpPlayerNameInput.onEndEdit.AddListener((val) =>
                 {
-                    RTSNetworkSyncManager.Instance?.SetPlayerName(val);
+                    if (!string.IsNullOrWhiteSpace(val))
+                    {
+                        RTSNetworkSyncManager.Instance?.SetPlayerName(val);
+                    }
                     UpdatePhotonRoomLobbyUI();
                 });
             }
@@ -396,11 +407,15 @@ namespace CSE377.Gameplay
             {
                 mpCreateRoomBtn.onClick.AddListener(() =>
                 {
+                    if (!HasValidCommanderName())
+                    {
+                        RTSAudioManager.Instance?.PlaySound(RTSSoundType.AlarmHorn);
+                        UpdatePhotonRoomLobbyUI();
+                        return;
+                    }
                     if (RTSNetworkSyncManager.Instance != null)
                     {
-                        string pName = (mpPlayerNameInput != null && !string.IsNullOrWhiteSpace(mpPlayerNameInput.text))
-                            ? mpPlayerNameInput.text.Trim()
-                            : RTSNetworkSyncManager.Instance.localPlayerName;
+                        string pName = mpPlayerNameInput.text.Trim();
                         // Oda kodu oyuncu tarafından değil, sistem tarafından otomatik benzersiz olarak atanır
                         RTSNetworkSyncManager.Instance.CreatePhotonRoom(pName);
                     }
@@ -499,11 +514,15 @@ namespace CSE377.Gameplay
             {
                 startScreenJoinRoomBtn.onClick.AddListener(() =>
                 {
+                    if (!HasValidCommanderName())
+                    {
+                        RTSAudioManager.Instance?.PlaySound(RTSSoundType.AlarmHorn);
+                        UpdatePhotonRoomLobbyUI();
+                        return;
+                    }
                     if (RTSNetworkSyncManager.Instance != null)
                     {
-                        string pName = (mpPlayerNameInput != null && !string.IsNullOrWhiteSpace(mpPlayerNameInput.text))
-                            ? mpPlayerNameInput.text.Trim()
-                            : RTSNetworkSyncManager.Instance.localPlayerName;
+                        string pName = mpPlayerNameInput.text.Trim();
                         string roomCode = (startScreenRoomInput != null && !string.IsNullOrWhiteSpace(startScreenRoomInput.text))
                             ? startScreenRoomInput.text.Trim().ToUpperInvariant()
                             : "ODA-101";
@@ -857,12 +876,33 @@ namespace CSE377.Gameplay
             SetAiStatus($"{teamBanner} Sefer Başladı! Ekonominizi kurun, AI Komutanınızla plan yapın ve zaferi kazanın!", Color.white);
         }
 
+        private bool HasValidCommanderName()
+        {
+            return mpPlayerNameInput != null && !string.IsNullOrWhiteSpace(mpPlayerNameInput.text);
+        }
+
         public void UpdatePhotonRoomLobbyUI()
         {
             var net = RTSNetworkSyncManager.Instance;
             bool inRoom = (net != null && net.isMultiplayerMode && net.isRoomConnected);
             UnitTeam team = (net != null) ? net.assignedTeam : RTSGameManager.LocalPlayerTeam;
             string roomCode = (net != null && !string.IsNullOrEmpty(net.matchRoomId)) ? net.matchRoomId : "ODA-101";
+            bool hasValidName = HasValidCommanderName();
+
+            if (mpCreateRoomBtn != null)
+            {
+                mpCreateRoomBtn.interactable = hasValidName;
+                var createTxt = mpCreateRoomBtn.GetComponentInChildren<Text>();
+                if (createTxt != null)
+                {
+                    createTxt.text = hasValidName ? "➕ YENİ ODA AÇ (Otomatik Kod)" : "🔒 ÖNCE KOMUTAN ADI GİRİN";
+                }
+                var createImg = mpCreateRoomBtn.GetComponent<Image>();
+                if (createImg != null)
+                {
+                    createImg.color = hasValidName ? new Color(0.14f, 0.46f, 0.26f) : new Color(0.28f, 0.22f, 0.22f);
+                }
+            }
 
             // Açık Odalar Listesini Güncelle
             var openRooms = (net != null) ? net.ActiveOpenRooms : null;
@@ -904,14 +944,19 @@ namespace CSE377.Gameplay
                         }
 
                         string targetRoomName = rInfo.roomName;
+                        rowBtn.interactable = hasValidName;
                         rowBtn.onClick.RemoveAllListeners();
                         rowBtn.onClick.AddListener(() =>
                         {
+                            if (!HasValidCommanderName())
+                            {
+                                RTSAudioManager.Instance?.PlaySound(RTSSoundType.AlarmHorn);
+                                UpdatePhotonRoomLobbyUI();
+                                return;
+                            }
                             if (RTSNetworkSyncManager.Instance != null)
                             {
-                                string pName = (mpPlayerNameInput != null && !string.IsNullOrWhiteSpace(mpPlayerNameInput.text))
-                                    ? mpPlayerNameInput.text.Trim()
-                                    : RTSNetworkSyncManager.Instance.localPlayerName;
+                                string pName = mpPlayerNameInput.text.Trim();
                                 if (startScreenRoomInput != null) startScreenRoomInput.text = targetRoomName;
                                 RTSNetworkSyncManager.Instance.JoinPhotonRoom(pName, targetRoomName);
                                 if (activeRoomModal != null)
