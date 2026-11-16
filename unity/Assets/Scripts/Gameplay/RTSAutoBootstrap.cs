@@ -2376,8 +2376,8 @@ namespace CSE377.Gameplay
             var sTitle = CreateUIText(mainCard.transform, "Title", "⚔️  IMPERIUM: MEDIEVAL AGENTS  ⚔️", 28, new Color(1.0f, 0.88f, 0.38f), medievalTitleFont, new Vector2(0.5f, 0.870f), new Vector2(880, 42));
             sTitle.fontStyle = FontStyle.Bold;
 
-            var sSubtitle = CreateUIText(mainCard.transform, "Subtitle", "Age of Empires Tarzı Gerçek Zamanlı Strateji, Taktiksel AI Komutanlığı & Kuşatma Harbi", 12, new Color(0.92f, 0.90f, 0.85f), medievalBodyFont, new Vector2(0.5f, 0.810f), new Vector2(880, 20));
-            sSubtitle.fontStyle = FontStyle.Italic;
+            var sSubtitle = CreateUIText(mainCard.transform, "Subtitle", "Age of Empires Tarzı Gerçek Zamanlı Strateji, Taktiksel AI Komutanlığı & Kuşatma Harbi", 13, new Color(0.96f, 0.94f, 0.88f), medievalBodyFont, new Vector2(0.5f, 0.810f), new Vector2(880, 24));
+            sSubtitle.fontStyle = FontStyle.Normal;
 
             // Altın Bölücü Çizgi
             CreateUIPanel(mainCard.transform, "HeaderDivider", new Vector2(0.08f, 0.765f), new Vector2(0.92f, 0.765f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(0, 1.5f), new Color(0.85f, 0.70f, 0.28f, 0.55f));
@@ -2429,30 +2429,27 @@ namespace CSE377.Gameplay
             CreateUIText(rightCol.transform, "ColHeader2", "⚜️  SEFER KOMUTANLIĞI & OYUN MODU", 12, new Color(1f, 0.88f, 0.42f), medievalTitleFont, new Vector2(0.5f, 0.93f), new Vector2(350, 22)).fontStyle = FontStyle.Bold;
 
             // 1. TEK OYUNCULU SEFERİ BAŞLAT BUTONU (PRIMARY CTA - Zümrüt & Altın Yaldızlı Mühür Buton)
-            var playBtn = CreateUITexturedButton(rightCol.transform, "PlayBtn", "⚔️  SEFERİ BAŞLAT  ⚔️", btnGreenTex, medievalTitleFont, new Vector2(0.5f, 0.76f), new Vector2(346, 62), new Color(0.10f, 0.50f, 0.22f));
+            var playBtn = CreateUITexturedButton(rightCol.transform, "PlayBtn", "⚔️  SEFERİ BAŞLAT  ⚔️", btnGreenTex, medievalTitleFont, new Vector2(0.5f, 0.76f), new Vector2(346, 60), new Color(0.10f, 0.50f, 0.22f));
             var playTxt = playBtn.GetComponentInChildren<Text>();
             if (playTxt != null) { playTxt.fontSize = 18; playTxt.fontStyle = FontStyle.Bold; playTxt.color = Color.white; }
-
-            var playSub = CreateUIText(playBtn.transform, "PlaySub", "[ Tek Oyunculu Sefer • Savaş Alanına Gir ]", 10, new Color(0.85f, 1.0f, 0.88f), medievalBodyFont, new Vector2(0.5f, 0.18f), new Vector2(320, 16));
-            playSub.fontStyle = FontStyle.Italic;
 
             // 2. ÇOK OYUNCULU SEÇENEĞİ BUTONU (Tıklandığında ayrı Çok Oyunculu Oda Lobisi Modalını açar)
             var modeBtn = CreateUITexturedButton(rightCol.transform, "MultiplayerOpenBtn", "🌐  ÇOK OYUNCULU (2 KİŞİLİK ODA)", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.53f), new Vector2(346, 48), new Color(0.14f, 0.28f, 0.48f));
             var modeBtnTxt = modeBtn.GetComponentInChildren<Text>();
-            if (modeBtnTxt != null) { modeBtnTxt.fontSize = 14; modeBtnTxt.fontStyle = FontStyle.Bold; modeBtnTxt.color = new Color(1f, 0.92f, 0.65f); }
+            if (modeBtnTxt != null) { modeBtnTxt.fontSize = 14; modeBtnTxt.fontStyle = FontStyle.Bold; modeBtnTxt.color = new Color(1f, 0.94f, 0.70f); }
 
             // 3. NASIL OYNANIR & KISAYOLLAR
             var guideBtn = CreateUITexturedButton(rightCol.transform, "GuideBtn", "📜  NASIL OYNANIR & KISAYOLLAR", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.33f), new Vector2(346, 44), new Color(0.20f, 0.18f, 0.16f));
             var guideBtnTxt = guideBtn.GetComponentInChildren<Text>();
-            if (guideBtnTxt != null) guideBtnTxt.fontSize = 13;
+            if (guideBtnTxt != null) { guideBtnTxt.fontSize = 13; guideBtnTxt.fontStyle = FontStyle.Bold; guideBtnTxt.color = Color.white; }
 
             // 4. SES & MÜZİK AYARLARI
             var audioBtn = CreateUITexturedButton(rightCol.transform, "AudioBtn", "⚙️  SES & MÜZİK AYARLARI", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.14f), new Vector2(346, 44), new Color(0.16f, 0.22f, 0.32f));
             var audioBtnTxt = audioBtn.GetComponentInChildren<Text>();
-            if (audioBtnTxt != null) audioBtnTxt.fontSize = 13;
+            if (audioBtnTxt != null) { audioBtnTxt.fontSize = 13; audioBtnTxt.fontStyle = FontStyle.Bold; audioBtnTxt.color = Color.white; }
 
             // --- C. ALT BİLGİ MÜHRÜ (LORE FOOTER) ---
-            CreateUIText(mainCard.transform, "Footer", "⚜️ CSE-377 RTS  •  Kraliyet Strateji Divanı  •  Taktiksel AI Komutanlığı ⚜️", 11, new Color(0.85f, 0.78f, 0.60f, 0.90f), medievalBodyFont, new Vector2(0.5f, 0.035f), new Vector2(860, 20));
+            CreateUIText(mainCard.transform, "Footer", "⚜️ CSE-377 RTS  •  Kraliyet Strateji Divanı  •  Taktiksel AI Komutanlığı ⚜️", 12, new Color(0.95f, 0.88f, 0.72f, 1.0f), medievalBodyFont, new Vector2(0.5f, 0.035f), new Vector2(860, 22));
 
             // --- 7.5 ÇOK OYUNCULU PHOTON ODA LİSTESİ MODALI (Yalnızca "ÇOK OYUNCULU" seçeneğine girince açılır) ---
             var mpModal = CreateUIPanel(canvasGo.transform, "MultiplayerLobby_Modal", new Vector2(0, 0), new Vector2(1, 1), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, new Color(0.015f, 0.02f, 0.03f, 1.0f));
