@@ -159,6 +159,7 @@ namespace CSE377.Gameplay
         public Button[] mpOpenRoomRowBtns;
         public Text[] mpOpenRoomRowTexts;
         public Text mpNoOpenRoomsText;
+        public Text mpLobbyStatusText;
         public Button startScreenTeamBtn;
         public Text startScreenTeamBtnText;
         public Text startScreenRoomStatusText;
@@ -375,6 +376,7 @@ namespace CSE377.Gameplay
                         {
                             mpPlayerNameInput.text = RTSNetworkSyncManager.Instance.localPlayerName;
                         }
+                        RTSNetworkSyncManager.Instance.EnsurePhotonLobbyOrReconnect();
                         RTSNetworkSyncManager.Instance.RefreshOpenRoomsRegistry();
                     }
                     RTSAudioManager.Instance?.PlaySound(RTSSoundType.Click);
@@ -433,6 +435,7 @@ namespace CSE377.Gameplay
             {
                 mpRefreshRoomsBtn.onClick.AddListener(() =>
                 {
+                    RTSNetworkSyncManager.Instance?.EnsurePhotonLobbyOrReconnect();
                     RTSNetworkSyncManager.Instance?.RefreshOpenRoomsRegistry();
                     RTSAudioManager.Instance?.PlaySound(RTSSoundType.Click);
                     UpdatePhotonRoomLobbyUI();
@@ -904,6 +907,20 @@ namespace CSE377.Gameplay
                 }
             }
 
+            if (mpLobbyStatusText != null && net != null)
+            {
+                string cloudStatus = net.GetPhotonCloudStatus(out bool cloudReady, out bool cloudErr);
+                mpLobbyStatusText.text = cloudStatus;
+                mpLobbyStatusText.color = cloudErr
+                    ? new Color(1f, 0.42f, 0.38f)
+                    : (cloudReady ? new Color(0.42f, 0.96f, 0.56f) : new Color(1f, 0.85f, 0.35f));
+            }
+
+            if (startScreenJoinRoomBtn != null)
+            {
+                startScreenJoinRoomBtn.interactable = hasValidName;
+            }
+
             // Açık Odalar Listesini Güncelle
             var openRooms = (net != null) ? net.ActiveOpenRooms : null;
             int roomCount = (openRooms != null) ? openRooms.Count : 0;
@@ -911,6 +928,15 @@ namespace CSE377.Gameplay
             if (mpNoOpenRoomsText != null)
             {
                 mpNoOpenRoomsText.gameObject.SetActive(roomCount == 0);
+                if (roomCount == 0 && net != null)
+                {
+                    string cloudStatus = net.GetPhotonCloudStatus(out bool cloudReady, out bool cloudErr);
+                    mpNoOpenRoomsText.text = cloudErr
+                        ? $"{cloudStatus}\nİnternet/Güvenlik duvarı ayarlarınızı kontrol edip '🔄 LİSTEYİ YENİLE'ye basın."
+                        : (cloudReady
+                            ? "Şu anda açık bir oda bulunmuyor.\n'➕ YENİ ODA AÇ'a basın veya arkadaşınızın oda adını yazıp 'ODAYA KATIL'a tıklayın!"
+                            : $"{cloudStatus}\nPhoton Cloud lobisi hazır olduğunda açık odalar burada otomatik listelenir.");
+                }
             }
 
             if (mpOpenRoomRowBtns != null && mpOpenRoomRowTexts != null)

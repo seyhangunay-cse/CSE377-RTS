@@ -2548,48 +2548,54 @@ namespace CSE377.Gameplay
             // --- 7.5 ÇOK OYUNCULU PHOTON ODA LİSTESİ MODALI (Yalnızca "ÇOK OYUNCULU" seçeneğine girince açılır) ---
             var mpModal = CreateUIPanel(canvasGo.transform, "MultiplayerLobby_Modal", new Vector2(0, 0), new Vector2(1, 1), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, new Color(0.015f, 0.02f, 0.03f, 1.0f));
 
-            var mpBox = CreateUIPanel(mpModal.transform, "Multiplayer_Box", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(760, 560), new Color(0.08f, 0.06f, 0.05f, 0.98f));
+            var mpBox = CreateUIPanel(mpModal.transform, "Multiplayer_Box", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(760, 620), new Color(0.08f, 0.06f, 0.05f, 0.98f));
             CreateUIPanel(mpBox.transform, "MpBorder", new Vector2(0, 0), new Vector2(1, 1), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, new Color(0.85f, 0.70f, 0.28f, 0.85f));
             CreateUIPanel(mpBox.transform, "MpInner", new Vector2(0, 0), new Vector2(1, 1), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(-4, -4), new Color(0.09f, 0.11f, 0.16f, 0.96f));
             CreateUIPanel(mpBox.transform, "MpGoldLine", new Vector2(0, 1), new Vector2(1, 1), new Vector2(0.5f, 1), new Vector2(0, -68), new Vector2(-48, 2f), new Color(0.85f, 0.70f, 0.28f, 0.6f));
 
-            var mpBadge = CreateUIText(mpBox.transform, "MpBadge", "⚜  PHOTON PUN 2 ÇOK OYUNCULU SEFER DİVANI  ⚜", 11, new Color(1f, 0.85f, 0.35f), medievalTitleFont, new Vector2(0.5f, 0.95f), new Vector2(680, 18));
+            var mpBadge = CreateUIText(mpBox.transform, "MpBadge", "⏳ PHOTON CLOUD'A BAĞLANILIYOR...", 11, new Color(1f, 0.85f, 0.35f), medievalTitleFont, new Vector2(0.5f, 0.955f), new Vector2(700, 18));
             mpBadge.fontStyle = FontStyle.Bold;
 
-            var mpTitle = CreateUIText(mpBox.transform, "MpTitle", "🌐  2 KİŞİLİK ODA LİSTESİ & ODA AÇMA EKRANI  🌐", 21, new Color(1.0f, 0.88f, 0.38f), medievalTitleFont, new Vector2(0.5f, 0.895f), new Vector2(680, 30));
+            var mpTitle = CreateUIText(mpBox.transform, "MpTitle", "🌐  2 KİŞİLİK ODA LİSTESİ & ODA AÇMA EKRANI  🌐", 21, new Color(1.0f, 0.88f, 0.38f), medievalTitleFont, new Vector2(0.5f, 0.905f), new Vector2(680, 30));
             mpTitle.fontStyle = FontStyle.Bold;
 
             // 1. Satır: Kullanıcı Adı (Komutan Adı) & Otomatik Oda Açma
-            var userLbl = CreateUIText(mpBox.transform, "UserLabel", "👤 KOMUTAN ADI (KULLANICI ADI):", 11, new Color(0.95f, 0.88f, 0.65f), medievalTitleFont, new Vector2(0.30f, 0.815f), new Vector2(360, 18));
+            var userLbl = CreateUIText(mpBox.transform, "UserLabel", "👤 KOMUTAN ADI (KULLANICI ADI):", 11, new Color(0.95f, 0.88f, 0.65f), medievalTitleFont, new Vector2(0.30f, 0.805f), new Vector2(360, 18));
             userLbl.alignment = TextAnchor.MiddleLeft;
             userLbl.fontStyle = FontStyle.Bold;
 
-            var playerNameInput = CreateUIInputField(mpBox.transform, "PlayerNameInput", "Kullanıcı Adınız...", medievalBodyFont, new Vector2(0.30f, 0.75f), new Vector2(360, 38), new Color(0.04f, 0.05f, 0.08f, 0.98f));
+            var playerNameInput = CreateUIInputField(mpBox.transform, "PlayerNameInput", "Kullanıcı Adınız...", medievalBodyFont, new Vector2(0.30f, 0.75f), new Vector2(360, 36), new Color(0.04f, 0.05f, 0.08f, 0.98f));
             playerNameInput.text = RTSNetworkSyncManager.Instance != null ? RTSNetworkSyncManager.Instance.localPlayerName : "Komutan_101";
             var pNameBorder = playerNameInput.gameObject.AddComponent<Outline>();
             pNameBorder.effectColor = new Color(0.75f, 0.60f, 0.25f, 0.85f);
 
-            var createRoomBtn = CreateUIButton(mpBox.transform, "CreateRoomBtn", "➕ YENİ ODA AÇ (Otomatik Kod)", medievalTitleFont, new Vector2(0.74f, 0.75f), new Vector2(280, 38), new Color(0.14f, 0.46f, 0.26f));
+            var createRoomBtn = CreateUIButton(mpBox.transform, "CreateRoomBtn", "➕ YENİ ODA AÇ (Otomatik Kod)", medievalTitleFont, new Vector2(0.74f, 0.75f), new Vector2(280, 36), new Color(0.14f, 0.46f, 0.26f));
             var createRoomTxt = createRoomBtn.GetComponentInChildren<Text>();
             if (createRoomTxt != null) { createRoomTxt.fontSize = 12; createRoomTxt.fontStyle = FontStyle.Bold; }
 
-            InputField roomInput = null;
-            Button joinRoomBtn = null;
+            // 1.5 Satır: Oda Adıyla Doğrudan Katılma (Listede anlık görünmese bile birebir oda adıyla giriş)
+            var roomInput = CreateUIInputField(mpBox.transform, "RoomCodeInput", "Oda adı yazın (örn: Rosenfield Odası)", medievalBodyFont, new Vector2(0.30f, 0.655f), new Vector2(360, 34), new Color(0.04f, 0.05f, 0.08f, 0.98f));
+            var rCodeBorder = roomInput.gameObject.AddComponent<Outline>();
+            rCodeBorder.effectColor = new Color(0.45f, 0.58f, 0.78f, 0.75f);
+
+            var joinRoomBtn = CreateUIButton(mpBox.transform, "JoinRoomBtn", "🚪 ODA ADIYLA KATIL", medievalTitleFont, new Vector2(0.74f, 0.655f), new Vector2(280, 34), new Color(0.16f, 0.30f, 0.52f));
+            var joinRoomTxt = joinRoomBtn.GetComponentInChildren<Text>();
+            if (joinRoomTxt != null) { joinRoomTxt.fontSize = 12; joinRoomTxt.fontStyle = FontStyle.Bold; }
 
             // 2. Bölüm: AÇIK ODALAR LİSTESİ (Aktif Lobi Odaları Tarayıcısı)
-            var listHdr = CreateUIText(mpBox.transform, "RoomsListHeader", "📋 AÇIK ODALAR LİSTESİ (Katılmak İstediğiniz Odaya Tıklayın):", 12, new Color(1f, 0.88f, 0.42f), medievalTitleFont, new Vector2(0.42f, 0.64f), new Vector2(520, 20));
+            var listHdr = CreateUIText(mpBox.transform, "RoomsListHeader", "📋 AÇIK ODALAR LİSTESİ (Katılmak İstediğiniz Odaya Tıklayın):", 12, new Color(1f, 0.88f, 0.42f), medievalTitleFont, new Vector2(0.42f, 0.57f), new Vector2(520, 20));
             listHdr.alignment = TextAnchor.MiddleLeft;
             listHdr.fontStyle = FontStyle.Bold;
 
-            var refreshRoomsBtn = CreateUIButton(mpBox.transform, "RefreshRoomsBtn", "🔄 LİSTEYİ YENİLE", medievalTitleFont, new Vector2(0.865f, 0.64f), new Vector2(130, 28), new Color(0.22f, 0.26f, 0.34f));
+            var refreshRoomsBtn = CreateUIButton(mpBox.transform, "RefreshRoomsBtn", "🔄 LİSTEYİ YENİLE", medievalTitleFont, new Vector2(0.865f, 0.57f), new Vector2(130, 28), new Color(0.22f, 0.26f, 0.34f));
             var refreshTxt = refreshRoomsBtn.GetComponentInChildren<Text>();
             if (refreshTxt != null) { refreshTxt.fontSize = 10; refreshTxt.fontStyle = FontStyle.Bold; }
 
-            var roomsListBox = CreateUIPanel(mpBox.transform, "MpRoomsListBox", new Vector2(0.5f, 0.41f), new Vector2(0.5f, 0.41f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(680, 210), new Color(0.04f, 0.05f, 0.08f, 0.96f));
+            var roomsListBox = CreateUIPanel(mpBox.transform, "MpRoomsListBox", new Vector2(0.5f, 0.375f), new Vector2(0.5f, 0.375f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(680, 190), new Color(0.04f, 0.05f, 0.08f, 0.96f));
             var roomsListBorder = roomsListBox.AddComponent<Outline>();
             roomsListBorder.effectColor = new Color(0.65f, 0.52f, 0.22f, 0.65f);
 
-            var noRoomsTxt = CreateUIText(roomsListBox.transform, "NoOpenRoomsText", "Şu anda açık bir oda bulunmuyor.\nYukarıdan kullanıcı adınızı girip '➕ YENİ ODA AÇ' butonuna basarak yeni bir oda penceresi açabilirsiniz!", 13, new Color(0.75f, 0.80f, 0.88f), medievalBodyFont, new Vector2(0.5f, 0.5f), new Vector2(640, 70));
+            var noRoomsTxt = CreateUIText(roomsListBox.transform, "NoOpenRoomsText", "Şu anda açık bir oda bulunmuyor.\nYukarıdan kullanıcı adınızı girip '➕ YENİ ODA AÇ' butonuna basarak yeni bir oda penceresi açabilirsiniz!", 13, new Color(0.75f, 0.80f, 0.88f), medievalBodyFont, new Vector2(0.5f, 0.5f), new Vector2(640, 80));
             noRoomsTxt.fontStyle = FontStyle.Italic;
 
             Button[] openRoomBtns = new Button[3];
@@ -2597,7 +2603,7 @@ namespace CSE377.Gameplay
             float[] rowY = new float[] { 0.78f, 0.50f, 0.22f };
             for (int rIdx = 0; rIdx < 3; rIdx++)
             {
-                var rBtn = CreateUIButton(roomsListBox.transform, $"OpenRoomRow_{rIdx}", "🏰 ODA-101 • Kurucu: Komutan • [1/2 AÇIK] • KATIL ►", medievalTitleFont, new Vector2(0.5f, rowY[rIdx]), new Vector2(656, 46), new Color(0.14f, 0.22f, 0.36f, 0.95f));
+                var rBtn = CreateUIButton(roomsListBox.transform, $"OpenRoomRow_{rIdx}", "🏰 ODA-101 • Kurucu: Komutan • [1/2 AÇIK] • KATIL ►", medievalTitleFont, new Vector2(0.5f, rowY[rIdx]), new Vector2(656, 44), new Color(0.14f, 0.22f, 0.36f, 0.95f));
                 var rTxt = rBtn.GetComponentInChildren<Text>();
                 if (rTxt != null)
                 {
@@ -2611,9 +2617,9 @@ namespace CSE377.Gameplay
             }
 
             // Alt Bilgi & Ana Menüye Dön Butonu
-            CreateUIText(mpBox.transform, "MpBrowserHint", "💡 '➕ YENİ ODA AÇ' veya listedeki bir odaya tıkladığınızda Oda Penceresi (Oyun Ayarları & Oyunu Başlat) açılır.", 11, new Color(0.85f, 0.82f, 0.70f), medievalBodyFont, new Vector2(0.5f, 0.18f), new Vector2(680, 22)).fontStyle = FontStyle.Italic;
+            CreateUIText(mpBox.transform, "MpBrowserHint", "💡 '➕ YENİ ODA AÇ', oda adı girişi veya listedeki bir odaya tıkladığınızda Oda Penceresi açılır.", 11, new Color(0.85f, 0.82f, 0.70f), medievalBodyFont, new Vector2(0.5f, 0.165f), new Vector2(680, 22)).fontStyle = FontStyle.Italic;
 
-            var mpBackBtn = CreateUITexturedButton(mpBox.transform, "MpBackBtn", "◄  ANA MENÜYE DÖN", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.085f), new Vector2(280, 48), new Color(0.22f, 0.16f, 0.14f));
+            var mpBackBtn = CreateUITexturedButton(mpBox.transform, "MpBackBtn", "◄  ANA MENÜYE DÖN", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.08f), new Vector2(280, 46), new Color(0.22f, 0.16f, 0.14f));
 
             mpModal.SetActive(false);
 
@@ -2713,6 +2719,7 @@ namespace CSE377.Gameplay
             hud.mpOpenRoomRowBtns = openRoomBtns;
             hud.mpOpenRoomRowTexts = openRoomTxts;
             hud.mpNoOpenRoomsText = noRoomsTxt;
+            hud.mpLobbyStatusText = mpBadge;
             hud.startScreenTeamBtn = teamBtn;
             hud.startScreenTeamBtnText = teamBtnTxt;
             hud.startScreenRoomStatusText = roomStatusTxt;

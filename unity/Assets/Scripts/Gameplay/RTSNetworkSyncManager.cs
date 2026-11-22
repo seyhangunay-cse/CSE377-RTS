@@ -158,17 +158,10 @@ namespace CSE377.Gameplay
             Application.runInBackground = true;
             nextRivalActionTime = Time.time + 15f;
 #if PHOTON_UNITY_NETWORKING
-            if (PhotonNetwork.PhotonServerSettings != null && PhotonNetwork.PhotonServerSettings.AppSettings != null)
-            {
-                PhotonNetwork.PhotonServerSettings.AppSettings.AppIdRealtime = photonAppId;
-                if (string.IsNullOrWhiteSpace(PhotonNetwork.PhotonServerSettings.AppSettings.FixedRegion))
-                {
-                    PhotonNetwork.PhotonServerSettings.AppSettings.FixedRegion = "eu";
-                }
-            }
+            ApplyPhotonAppSettings();
             PhotonNetwork.NickName = localPlayerName;
             PhotonNetwork.AutomaticallySyncScene = true;
-            if (!PhotonNetwork.IsConnected)
+            if (!PhotonNetwork.IsConnected || PhotonNetwork.NetworkClientState == ClientState.Disconnected)
             {
                 PhotonNetwork.ConnectUsingSettings();
             }
@@ -181,26 +174,82 @@ namespace CSE377.Gameplay
         {
             RemoveOwnRoomFromRegistry();
             CloseUdpSocket();
-#if PHOTON_UNITY_NETWORKING
-            PhotonNetwork.RemoveCallbackTarget(this);
-#endif
         }
 
 #if PHOTON_UNITY_NETWORKING
         private const byte PhotonPacketEventCode = 77;
         private readonly Dictionary<string, RoomInfo> photonCloudRooms = new Dictionary<string, RoomInfo>(StringComparer.OrdinalIgnoreCase);
         private bool pendingPhotonRoomOp = false;
+        private float nextPhotonReconnectTime = 0f;
+        public string lastPhotonDisconnectReason = "";
+
+        private void ApplyPhotonAppSettings()
+        {
+            if (PhotonNetwork.PhotonServerSettings != null && PhotonNetwork.PhotonServerSettings.AppSettings != null)
+            {
+                var appSettings = PhotonNetwork.PhotonServerSettings.AppSettings;
+                appSettings.AppIdRealtime = photonAppId;
+                appSettings.FixedRegion = "eu";
+                // Kampüs/yurt ve ev ağlarında UDP/WSS bloklarını aşmak için güvenilir TCP protokolü kullan
+                appSettings.Protocol = ExitGames.Client.Photon.ConnectionProtocol.Tcp;
+                appSettings.EnableProtocolFallback = false;
+            }
+            if (PhotonNetwork.NetworkingClient != null && PhotonNetwork.NetworkingClient.LoadBalancingPeer != null
+                && !PhotonNetwork.IsConnected)
+            {
+                PhotonNetwork.NetworkingClient.LoadBalancingPeer.TransportProtocol = ExitGames.Client.Photon.ConnectionProtocol.Tcp;
+            }
+        }
+
+        public void EnsurePhotonLobbyOrReconnect()
+        {
+            ApplyPhotonAppSettings();
+            PhotonNetwork.NickName = localPlayerName;
+            if (!PhotonNetwork.IsConnected || PhotonNetwork.NetworkClientState == ClientState.Disconnected)
+            {
+                PhotonNetwork.AutomaticallySyncScene = true;
+                PhotonNetwork.ConnectUsingSettings();
+            }
+            else if (PhotonNetwork.NetworkClientState == ClientState.ConnectedToMasterServer && !PhotonNetwork.InLobby && !PhotonNetwork.InRoom)
+            {
+                PhotonNetwork.JoinLobby();
+            }
+        }
+
+        public string GetPhotonCloudStatus(out bool isReady, out bool hasError)
+        {
+            ClientState st = PhotonNetwork.NetworkClientState;
+            if (PhotonNetwork.InRoom)
+            {
+                isReady = true;
+                hasError = false;
+                return $"🟢 PHOTON CLOUD BAĞLI (eu / TCP • Oda: {PhotonNetwork.CurrentRoom?.Name})";
+            }
+            if (st == ClientState.JoinedLobby)
+            {
+                isReady = true;
+                hasError = false;
+                return $"🟢 PHOTON CLOUD HAZIR (Bölge: eu • TCP • Lobi Açık • Oda: {photonCloudRooms.Count})";
+            }
+            if (!string.IsNullOrEmpty(lastPhotonDisconnectReason) && (st == ClientState.Disconnected || st == ClientState.PeerCreated))
+            {
+                isReady = false;
+                hasError = true;
+                return $"🔴 PHOTON BAĞLANTI HATASI: {lastPhotonDisconnectReason} (Yeniden deneniyor...)";
+            }
+            isReady = false;
+            hasError = false;
+            return $"⏳ PHOTON CLOUD'A BAĞLANILIYOR... ({st})";
+        }
 
         public override void OnEnable()
         {
             base.OnEnable();
-            PhotonNetwork.AddCallbackTarget(this);
         }
 
         public override void OnDisable()
         {
             base.OnDisable();
-            PhotonNetwork.RemoveCallbackTarget(this);
         }
 
         private bool IsReadyForPhotonMatchmaking()
@@ -226,9 +275,15 @@ namespace CSE377.Gameplay
 
             pendingPhotonRoomOp = false;
             if (isHost)
+            {
+                Debug.Log($"[PHOTON] JoinOrCreateRoom çağrılıyor: '{matchRoomId}' (State: {PhotonNetwork.NetworkClientState})");
                 PhotonNetwork.JoinOrCreateRoom(matchRoomId, BuildPhotonRoomOptions(), TypedLobby.Default);
+            }
             else
+            {
+                Debug.Log($"[PHOTON] JoinRoom çağrılıyor: '{matchRoomId}' (State: {PhotonNetwork.NetworkClientState})");
                 PhotonNetwork.JoinRoom(matchRoomId);
+            }
         }
 
         private RoomOptions BuildPhotonRoomOptions()
@@ -247,8 +302,17 @@ namespace CSE377.Gameplay
             };
         }
 
+        public override void OnConnected()
+        {
+            lastPhotonDisconnectReason = "";
+            Debug.Log("[PHOTON] Sunucuya ilk bağlantı kuruldu.");
+            OnRoomStateChanged?.Invoke();
+        }
+
         public override void OnConnectedToMaster()
         {
+            lastPhotonDisconnectReason = "";
+            Debug.Log($"[PHOTON] Master Server hazır! Region={PhotonNetwork.CloudRegion}, Pending={pendingPhotonRoomOp}");
             if (pendingPhotonRoomOp || (isMultiplayerMode && isRoomConnected && !PhotonNetwork.InRoom))
             {
                 ExecutePhotonRoomJoinOrCreate();
@@ -257,22 +321,48 @@ namespace CSE377.Gameplay
             {
                 PhotonNetwork.JoinLobby();
             }
+            OnRoomStateChanged?.Invoke();
         }
 
         public override void OnJoinedLobby()
         {
+            lastPhotonDisconnectReason = "";
+            Debug.Log($"[PHOTON] Varsayılan Lobiye girildi! Region={PhotonNetwork.CloudRegion}");
             if (pendingPhotonRoomOp || (isMultiplayerMode && isRoomConnected && !PhotonNetwork.InRoom))
             {
                 ExecutePhotonRoomJoinOrCreate();
             }
+            OnRoomStateChanged?.Invoke();
+        }
+
+        public override void OnCreatedRoom()
+        {
+            Debug.Log($"[PHOTON] Oda oluşturuldu: '{PhotonNetwork.CurrentRoom?.Name}'");
+        }
+
+        public override void OnDisconnected(DisconnectCause cause)
+        {
+            lastPhotonDisconnectReason = cause.ToString();
+            Debug.LogWarning($"[PHOTON BAĞLANTI KESİLDİ] Sebep: {cause}");
+            RefreshStatusMessage();
+            OnRoomStateChanged?.Invoke();
+        }
+
+        public override void OnCustomAuthenticationFailed(string debugMessage)
+        {
+            lastPhotonDisconnectReason = $"AuthFailed: {debugMessage}";
+            Debug.LogError($"[PHOTON AUTH HATASI] {debugMessage}");
+            OnRoomStateChanged?.Invoke();
         }
 
         public override void OnLeftRoom()
         {
+            Debug.Log("[PHOTON] Odadan ayrılındı.");
             if (pendingPhotonRoomOp && isMultiplayerMode && isRoomConnected && IsReadyForPhotonMatchmaking())
             {
                 ExecutePhotonRoomJoinOrCreate();
             }
+            OnRoomStateChanged?.Invoke();
         }
 
         public override void OnCreateRoomFailed(short returnCode, string message)
@@ -306,6 +396,7 @@ namespace CSE377.Gameplay
                     photonCloudRooms[info.Name] = info;
                 }
             }
+            Debug.Log($"[PHOTON LOBİ] Oda listesi güncellendi (Aktif Photon Oda Sayısı: {photonCloudRooms.Count})");
             RefreshOpenRoomsRegistry();
         }
 
@@ -403,6 +494,14 @@ namespace CSE377.Gameplay
                 nextRegistryPollTime = Time.unscaledTime + 0.6f;
                 RefreshOpenRoomsRegistry();
             }
+
+#if PHOTON_UNITY_NETWORKING
+            if (Time.unscaledTime >= nextPhotonReconnectTime && (!PhotonNetwork.IsConnected || PhotonNetwork.NetworkClientState == ClientState.Disconnected))
+            {
+                nextPhotonReconnectTime = Time.unscaledTime + 3.0f;
+                EnsurePhotonLobbyOrReconnect();
+            }
+#endif
 
             if (isMultiplayerMode && isRoomConnected)
             {
@@ -778,14 +877,7 @@ namespace CSE377.Gameplay
             }
 
 #if PHOTON_UNITY_NETWORKING
-            if (PhotonNetwork.PhotonServerSettings != null && PhotonNetwork.PhotonServerSettings.AppSettings != null)
-            {
-                PhotonNetwork.PhotonServerSettings.AppSettings.AppIdRealtime = photonAppId;
-                if (string.IsNullOrWhiteSpace(PhotonNetwork.PhotonServerSettings.AppSettings.FixedRegion))
-                {
-                    PhotonNetwork.PhotonServerSettings.AppSettings.FixedRegion = "eu";
-                }
-            }
+            ApplyPhotonAppSettings();
             PhotonNetwork.NickName = localPlayerName;
             if (!PhotonNetwork.IsConnected || PhotonNetwork.NetworkClientState == ClientState.Disconnected)
             {
@@ -837,6 +929,7 @@ namespace CSE377.Gameplay
 
         public void RefreshOpenRoomsRegistry()
         {
+            var localRooms = new List<RoomListingInfo>();
             try
             {
                 RoomRegistryData reg = new RoomRegistryData();
@@ -977,40 +1070,41 @@ namespace CSE377.Gameplay
                 }
 
                 File.WriteAllText(RegistryFilePath, JsonUtility.ToJson(reg), Encoding.UTF8);
-
-                activeOpenRooms.Clear();
-                activeOpenRooms.AddRange(reg.rooms);
-#if PHOTON_UNITY_NETWORKING
-                foreach (var kv in photonCloudRooms)
-                {
-                    var pRoom = kv.Value;
-                    if (pRoom == null) continue;
-                    bool alreadyInList = activeOpenRooms.Exists(r => r != null && string.Equals(r.roomName, pRoom.Name, StringComparison.OrdinalIgnoreCase));
-                    if (!alreadyInList)
-                    {
-                        string hName = (pRoom.CustomProperties != null && pRoom.CustomProperties.TryGetValue("host", out object hObj) && hObj != null)
-                            ? hObj.ToString() : pRoom.Name;
-                        string mName = (pRoom.CustomProperties != null && pRoom.CustomProperties.TryGetValue("map", out object mObj) && mObj != null)
-                            ? mObj.ToString() : RTSMapType.RiverValley.ToString();
-                        activeOpenRooms.Add(new RoomListingInfo
-                        {
-                            roomName = pRoom.Name,
-                            hostName = hName,
-                            hostInstanceId = "PHOTON_CLOUD",
-                            mapType = mName,
-                            playerCount = pRoom.PlayerCount,
-                            matchStarted = false
-                        });
-                    }
-                }
-#endif
-                RefreshStatusMessage();
-                OnRoomStateChanged?.Invoke();
+                localRooms.AddRange(reg.rooms);
             }
             catch
             {
-                // Dosya erişim çakışmasında bir sonraki döngüde devam et
+                // Yerel %TEMP% erişimi başarısız olsa bile Photon Cloud odaları listelenmeye devam etsin
             }
+
+            activeOpenRooms.Clear();
+            activeOpenRooms.AddRange(localRooms);
+#if PHOTON_UNITY_NETWORKING
+            foreach (var kv in photonCloudRooms)
+            {
+                var pRoom = kv.Value;
+                if (pRoom == null) continue;
+                bool alreadyInList = activeOpenRooms.Exists(r => r != null && string.Equals(r.roomName, pRoom.Name, StringComparison.OrdinalIgnoreCase));
+                if (!alreadyInList)
+                {
+                    string hName = (pRoom.CustomProperties != null && pRoom.CustomProperties.TryGetValue("host", out object hObj) && hObj != null)
+                        ? hObj.ToString() : pRoom.Name;
+                    string mName = (pRoom.CustomProperties != null && pRoom.CustomProperties.TryGetValue("map", out object mObj) && mObj != null)
+                        ? mObj.ToString() : RTSMapType.RiverValley.ToString();
+                    activeOpenRooms.Add(new RoomListingInfo
+                    {
+                        roomName = pRoom.Name,
+                        hostName = hName,
+                        hostInstanceId = "PHOTON_CLOUD",
+                        mapType = mName,
+                        playerCount = pRoom.PlayerCount,
+                        matchStarted = false
+                    });
+                }
+            }
+#endif
+            RefreshStatusMessage();
+            OnRoomStateChanged?.Invoke();
         }
 
         private void RemoveOwnRoomFromRegistry()
