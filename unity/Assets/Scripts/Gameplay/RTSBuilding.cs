@@ -331,7 +331,7 @@ namespace CSE377.Gameplay
                 int arrowsFired = 0;
                 foreach (var u in RTSUnit.AllUnits)
                 {
-                    if (u != null && u.team != this.team && u.currentHp > 0)
+                    if (u != null && u.team != this.team && u.currentHp > 0 && RTSFogOfWarManager.IsEnemyUnitVisibleForTeam(this.team, u))
                     {
                         float d = Vector3.Distance(transform.position, u.transform.position);
                         if (d <= attackRange)
@@ -359,7 +359,7 @@ namespace CSE377.Gameplay
 
                 foreach (var u in RTSUnit.AllUnits)
                 {
-                    if (u != null && u.team != this.team && u.currentHp > 0)
+                    if (u != null && u.team != this.team && u.currentHp > 0 && RTSFogOfWarManager.IsEnemyUnitVisibleForTeam(this.team, u))
                     {
                         float d = Vector3.Distance(transform.position, u.transform.position);
                         if (d < nearestDist)

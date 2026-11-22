@@ -583,9 +583,9 @@ namespace CSE377.Gameplay
                         inspectedEnemyBuilding = null;
                         SelectUnit(unit);
                     }
-                    else
+                    else if (RTSFogOfWarManager.IsEnemyUnitVisibleForTeam(myTeam, unit))
                     {
-                        // Rakip askeri tıklandı!
+                        // Rakip askeri tıklandı (yalnızca aktif görüşteyse)!
                         if (selectedUnits.Count > 0)
                         {
                             // Eğer oyuncunun seçili birlikleri varsa: Doğrudan taarruz emri ver ve düşman kartını göster
@@ -630,9 +630,9 @@ namespace CSE377.Gameplay
                         inspectedEnemyBuilding = null;
                         SelectBuilding(building);
                     }
-                    else
+                    else if (RTSFogOfWarManager.IsEnemyBuildingVisibleForTeam(myTeam, building, hit.point, requireActiveVision: false))
                     {
-                        // Rakip binası tıklandı!
+                        // Keşfedilmiş rakip binası tıklandı!
                         if (selectedUnits.Count > 0)
                         {
                             // Eğer oyuncunun seçili birlikleri varsa: Doğrudan kuşatma emri ver ve bina kartını göster
@@ -1140,19 +1140,29 @@ namespace CSE377.Gameplay
                     }
                 }
 
-                // 3 & 4. Hedef rakip birimi veya binası mı? (Doğrudan Collider Tıklaması)
+                // 3 & 4. Hedef rakip birimi veya binası mı? (Doğrudan Collider Tıklaması - Sadece sis dışında görünür/keşfedilmiş olanlar!)
                 RTSBuilding enemyBuilding = hasPhysicalHit ? hit.collider.GetComponentInParent<RTSBuilding>() : null;
                 RTSUnit enemyUnit = hasPhysicalHit ? hit.collider.GetComponentInParent<RTSUnit>() : null;
 
+                if (enemyUnit != null && enemyUnit.team != myTeam && !RTSFogOfWarManager.IsEnemyUnitVisibleForTeam(myTeam, enemyUnit))
+                {
+                    enemyUnit = null;
+                }
+                if (enemyBuilding != null && enemyBuilding.team != myTeam
+                    && !RTSFogOfWarManager.IsEnemyBuildingVisibleForTeam(myTeam, enemyBuilding, hasPhysicalHit ? hit.point : enemyBuilding.transform.position, requireActiveVision: false))
+                {
+                    enemyBuilding = null;
+                }
+
                 // Tıklama Toleransı (Click Magnetism): Eğer doğrudan ince collider vurulamadıysa ancak
-                // tıklanan noktanın 4.5m yakınında rakip birimi veya 6.5m yakınında rakip binası varsa kilitlen
+                // tıklanan noktanın 4.5m yakınında GÖRÜNÜR rakip birimi veya 6.5m yakınında KEŞFEDİLMİŞ rakip binası varsa kilitlen
                 if ((enemyBuilding == null || enemyBuilding.team == myTeam) && 
                     (enemyUnit == null || enemyUnit.team == myTeam))
                 {
                     float closestUnitDist = 4.5f;
                     foreach (var u in RTSUnit.AllUnits)
                     {
-                        if (u != null && u.team != myTeam && u.currentHp > 0)
+                        if (u != null && u.team != myTeam && u.currentHp > 0 && RTSFogOfWarManager.IsEnemyUnitVisibleForTeam(myTeam, u))
                         {
                             float d = Vector3.Distance(new Vector3(clickWorldPos.x, 0, clickWorldPos.z), new Vector3(u.transform.position.x, 0, u.transform.position.z));
                             if (d < closestUnitDist)
@@ -1171,8 +1181,12 @@ namespace CSE377.Gameplay
                             if (b != null && b.team != myTeam && b.currentHp > 0)
                             {
                                 Collider bCol = b.GetComponent<Collider>();
+                                Vector3 surfacePt = (bCol != null) ? bCol.ClosestPoint(new Vector3(clickWorldPos.x, 0, clickWorldPos.z)) : b.transform.position;
+                                if (!RTSFogOfWarManager.IsEnemyBuildingVisibleForTeam(myTeam, b, surfacePt, requireActiveVision: false))
+                                    continue;
+
                                 float d = (bCol != null) 
-                                    ? Vector3.Distance(new Vector3(clickWorldPos.x, 0, clickWorldPos.z), bCol.ClosestPoint(new Vector3(clickWorldPos.x, 0, clickWorldPos.z)))
+                                    ? Vector3.Distance(new Vector3(clickWorldPos.x, 0, clickWorldPos.z), surfacePt)
                                     : Vector3.Distance(new Vector3(clickWorldPos.x, 0, clickWorldPos.z), new Vector3(b.transform.position.x, 0, b.transform.position.z));
 
                                 if (d < closestBldDist)

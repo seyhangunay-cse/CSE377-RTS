@@ -1022,12 +1022,12 @@ namespace CSE377.Gameplay
 
             Vector3 zonePos = RTSZoneMarker.GetZonePosition(string.IsNullOrEmpty(targetZone) ? "north_gate" : targetZone, Vector3.zero, execTeam);
 
-            // Bölgeye veya haritadaki en yakın rakip birimi tespit et
+            // Bölgeye veya haritadaki en yakın GÖRÜNÜR (sis dışı) rakip birimi tespit et
             RTSUnit targetEnemy = null;
             float bestDist = float.MaxValue;
             foreach (var u in RTSUnit.AllUnits)
             {
-                if (u != null && u.team != execTeam && u.currentHp > 0)
+                if (u != null && u.team != execTeam && u.currentHp > 0 && RTSFogOfWarManager.IsEnemyUnitVisibleForTeam(execTeam, u))
                 {
                     float dist = (zonePos != Vector3.zero) ? Vector3.Distance(zonePos, u.transform.position) : 0f;
                     if (dist < bestDist)
@@ -1038,14 +1038,15 @@ namespace CSE377.Gameplay
                 }
             }
 
-            // Rakip birliği yoksa ve hedef bölgede rakip binası varsa onu hedef al
+            // Rakip birliği yoksa ve hedef bölgede keşfedilmiş rakip binası varsa onu hedef al
             RTSBuilding targetBuilding = null;
             if (targetEnemy == null && zonePos != Vector3.zero)
             {
                 float bestBldDist = 18f;
                 foreach (var b in RTSBuilding.AllBuildings)
                 {
-                    if (b != null && b.team != execTeam && b.currentHp > 0)
+                    if (b != null && b.team != execTeam && b.currentHp > 0
+                        && RTSFogOfWarManager.IsEnemyBuildingVisibleForTeam(execTeam, b, b.transform.position, requireActiveVision: false))
                     {
                         float dist = Vector3.Distance(zonePos, b.transform.position);
                         if (dist < bestBldDist)

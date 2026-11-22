@@ -697,6 +697,16 @@ namespace CSE377.Gameplay
             // 2. Düşman Askerine Yönelme ve Saldırı Döngüsü
             if (currentAttackTarget != null && currentAttackTarget.currentHp > 0)
             {
+                // Hedef savaş sisinin içine girdiyse (görüş dışına çıktıysa) saldırıyı kes ve kilidi bırak
+                if (!RTSFogOfWarManager.IsEnemyUnitVisibleForTeam(this.team, currentAttackTarget))
+                {
+                    currentAttackTarget = null;
+                    isMoving = false;
+                }
+            }
+
+            if (currentAttackTarget != null && currentAttackTarget.currentHp > 0)
+            {
                 Vector3 enemyPos = currentAttackTarget.transform.position;
                 float distanceToEnemy = Vector3.Distance(new Vector3(transform.position.x, 0, transform.position.z), new Vector3(enemyPos.x, 0, enemyPos.z));
 
@@ -753,47 +763,57 @@ namespace CSE377.Gameplay
                 Vector3 bPoint = (bCol != null) ? bCol.ClosestPoint(transform.position) : currentAttackBuilding.transform.position;
                 float distToBuilding = Vector3.Distance(new Vector3(transform.position.x, 0, transform.position.z), new Vector3(bPoint.x, 0, bPoint.z));
 
-                float effectiveRange = (unitType == "cavalry" || unitType == "spearman") ? attackRange + 1.8f : attackRange + 1.2f;
-
-                if (distToBuilding <= effectiveRange)
+                // Hiç keşfedilmemiş (Unexplored) düşman binasına saldırılamaz
+                if (!RTSFogOfWarManager.IsEnemyBuildingVisibleForTeam(this.team, currentAttackBuilding, bPoint, requireActiveVision: false))
                 {
-                    moveWaypoints.Clear();
+                    currentAttackBuilding = null;
                     isMoving = false;
-                    Vector3 lookDir = (currentAttackBuilding.transform.position - transform.position).normalized;
-                    lookDir.y = 0;
-                    if (lookDir != Vector3.zero)
-                    {
-                        transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(lookDir), Time.deltaTime * 14f);
-                    }
-
-                    if (Time.time >= nextAttackTime)
-                    {
-                        PerformAttackOnBuilding(currentAttackBuilding);
-                        nextAttackTime = Time.time + attackCooldown;
-                    }
                 }
                 else
                 {
-                    if (moveWaypoints.Count > 0)
+                    float effectiveRange = (unitType == "cavalry" || unitType == "spearman") ? attackRange + 1.8f : attackRange + 1.2f;
+                    bool buildingInActiveVision = RTSFogOfWarManager.IsEnemyBuildingVisibleForTeam(this.team, currentAttackBuilding, bPoint, requireActiveVision: true);
+
+                    if (distToBuilding <= effectiveRange && buildingInActiveVision)
                     {
-                        isMoving = true;
+                        moveWaypoints.Clear();
+                        isMoving = false;
+                        Vector3 lookDir = (currentAttackBuilding.transform.position - transform.position).normalized;
+                        lookDir.y = 0;
+                        if (lookDir != Vector3.zero)
+                        {
+                            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(lookDir), Time.deltaTime * 14f);
+                        }
+
+                        if (Time.time >= nextAttackTime)
+                        {
+                            PerformAttackOnBuilding(currentAttackBuilding);
+                            nextAttackTime = Time.time + attackCooldown;
+                        }
                     }
                     else
                     {
-                        bool crossRiverNeeded = RTSAutoBootstrap.HasRiver && 
-                            !IsCrossingPoint(transform.position) && !IsCrossingPoint(bPoint) &&
-                            ((transform.position.z < 0 && bPoint.z > 0) || (transform.position.z > 0 && bPoint.z < 0));
-
-                        if (crossRiverNeeded)
+                        if (moveWaypoints.Count > 0)
                         {
-                            var targetBld = currentAttackBuilding;
-                            MoveTo(bPoint, isManual: false);
-                            currentAttackBuilding = targetBld;
+                            isMoving = true;
                         }
                         else
                         {
-                            targetDestination = bPoint;
-                            isMoving = true;
+                            bool crossRiverNeeded = RTSAutoBootstrap.HasRiver && 
+                                !IsCrossingPoint(transform.position) && !IsCrossingPoint(bPoint) &&
+                                ((transform.position.z < 0 && bPoint.z > 0) || (transform.position.z > 0 && bPoint.z < 0));
+
+                            if (crossRiverNeeded)
+                            {
+                                var targetBld = currentAttackBuilding;
+                                MoveTo(bPoint, isManual: false);
+                                currentAttackBuilding = targetBld;
+                            }
+                            else
+                            {
+                                targetDestination = bPoint;
+                                isMoving = true;
+                            }
                         }
                     }
                 }
@@ -1202,13 +1222,15 @@ namespace CSE377.Gameplay
         private RTSUnit FindClosestEnemy()
         {
             RTSUnit closest = null;
-            float minDistance = detectionRadius;
+            float minDistance = Mathf.Min(detectionRadius, sightRadius);
             UnitTeam enemyTeam = (team == UnitTeam.Player) ? UnitTeam.Enemy : UnitTeam.Player;
 
             foreach (var u in AllUnits)
             {
                 if (u != null && u != this && u.team == enemyTeam && u.currentHp > 0)
                 {
+                    if (!RTSFogOfWarManager.IsEnemyUnitVisibleForTeam(this.team, u)) continue;
+
                     float dist = Vector3.Distance(transform.position, u.transform.position);
                     if (dist < minDistance)
                     {
@@ -1224,7 +1246,7 @@ namespace CSE377.Gameplay
         private RTSBuilding FindClosestEnemyBuilding()
         {
             RTSBuilding closest = null;
-            float minDistance = detectionRadius + 2.5f;
+            float minDistance = Mathf.Min(detectionRadius, sightRadius);
             UnitTeam enemyTeam = (team == UnitTeam.Player) ? UnitTeam.Enemy : UnitTeam.Player;
 
             foreach (var b in RTSBuilding.AllBuildings)
@@ -1233,6 +1255,8 @@ namespace CSE377.Gameplay
                 {
                     Collider bCol = b.GetComponent<Collider>();
                     Vector3 bPoint = (bCol != null) ? bCol.ClosestPoint(transform.position) : b.transform.position;
+                    if (!RTSFogOfWarManager.IsEnemyBuildingVisibleForTeam(this.team, b, bPoint, requireActiveVision: true)) continue;
+
                     float dist = Vector3.Distance(new Vector3(transform.position.x, 0, transform.position.z), new Vector3(bPoint.x, 0, bPoint.z));
                     if (dist < minDistance)
                     {
@@ -1375,10 +1399,17 @@ namespace CSE377.Gameplay
             // Meşru Müdafaa ve Misilleme (Retaliation)
             if (attacker != null && attacker.currentHp > 0 && currentHp > 0)
             {
-                // Oyuncunun manuel intikal emri YOKSA ve birim boşta ise saldırana karşılık ver
+                // Oyuncunun manuel intikal emri YOKSA ve birim boşta ise saldırana karşılık ver (siste gizliyse yalnızca o yöne ilerle)
                 if (!isManualMoveOrder && (currentAttackTarget == null || currentAttackTarget.currentHp <= 0))
                 {
-                    AttackTarget(attacker);
+                    if (RTSFogOfWarManager.IsEnemyUnitVisibleForTeam(this.team, attacker))
+                    {
+                        AttackTarget(attacker);
+                    }
+                    else
+                    {
+                        MoveTo(attacker.transform.position, isManual: false);
+                    }
                 }
 
                 // Yakındaki boşta duran müttefikleri (14 metre) yardıma çağır
@@ -1449,7 +1480,14 @@ namespace CSE377.Gameplay
                         float dist = Vector3.Distance(ally.transform.position, transform.position);
                         if (dist <= 14f)
                         {
-                            ally.AttackTarget(attacker);
+                            if (RTSFogOfWarManager.IsEnemyUnitVisibleForTeam(ally.team, attacker))
+                            {
+                                ally.AttackTarget(attacker);
+                            }
+                            else
+                            {
+                                ally.MoveTo(transform.position, isManual: false);
+                            }
                         }
                     }
                 }
@@ -1617,7 +1655,7 @@ namespace CSE377.Gameplay
                 armor = 2;
                 maxHp = 80;
                 moveSpeed = 3.0f;
-                detectionRadius = 18f;
+                detectionRadius = 15f;
                 sightRadius = 15f;
             }
             else if (unitType == "archer")
@@ -1627,7 +1665,7 @@ namespace CSE377.Gameplay
                 armor = 0;
                 maxHp = 70;
                 moveSpeed = 3.3f;
-                detectionRadius = 18f;
+                detectionRadius = 14f;
                 sightRadius = 14f;
             }
             else if (unitType == "swordsman")
@@ -1637,7 +1675,7 @@ namespace CSE377.Gameplay
                 armor = 4; // Ağır zırh
                 maxHp = 130;
                 moveSpeed = 3.4f;
-                detectionRadius = 16f;
+                detectionRadius = 12f;
                 sightRadius = 12f;
             }
             else if (unitType == "spearman")
@@ -1647,7 +1685,7 @@ namespace CSE377.Gameplay
                 armor = 2;
                 maxHp = 100;
                 moveSpeed = 3.5f;
-                detectionRadius = 16f;
+                detectionRadius = 12f;
                 sightRadius = 12f;
             }
             else if (unitType == "trebuchet")
@@ -1657,7 +1695,7 @@ namespace CSE377.Gameplay
                 armor = 2;
                 maxHp = 150;
                 moveSpeed = 2.0f;
-                detectionRadius = 20f;
+                detectionRadius = 16f;
                 sightRadius = 16f;
             }
             else if (unitType == "villager")

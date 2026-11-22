@@ -332,32 +332,31 @@ namespace CSE377.Gameplay
         }
 
         /// <summary>
-        /// Verilen dünya koordinatının yerel oyuncunun herhangi bir dost birimi veya binası tarafından görülüp görülmediğini hesaplar.
+        /// Belirli bir takımın (Player veya Enemy) herhangi bir canlı birimi ya da tamamlanmış binasının
+        /// verilen dünya noktasını aktif görüş alanı (sightRadius) içinde görüp görmediğini hesaplar (XZ düzlemi).
         /// </summary>
-        public bool IsPositionInPlayerVision(Vector3 worldPos)
+        public bool IsPositionInTeamVision(UnitTeam viewerTeam, Vector3 worldPos)
         {
-            UnitTeam localTeam = RTSGameManager.LocalPlayerTeam;
-
-            // 1. Dost Birlikler (Mızrakçı, Okçu, Köylü vb.)
             foreach (var u in RTSUnit.AllUnits)
             {
-                if (u != null && u.team == localTeam && u.currentHp > 0)
+                if (u != null && u.team == viewerTeam && u.currentHp > 0 && !u.isDead)
                 {
-                    float dist = Vector3.Distance(u.transform.position, worldPos);
-                    if (dist <= u.sightRadius)
+                    float dx = u.transform.position.x - worldPos.x;
+                    float dz = u.transform.position.z - worldPos.z;
+                    if (dx * dx + dz * dz <= u.sightRadius * u.sightRadius)
                     {
                         return true;
                     }
                 }
             }
 
-            // 2. Dost Binalar (Kışla, Kule, Şehir Merkezi vb.)
             foreach (var b in RTSBuilding.AllBuildings)
             {
-                if (b != null && b.team == localTeam && b.isConstructed && b.currentHp > 0)
+                if (b != null && b.team == viewerTeam && b.isConstructed && b.currentHp > 0)
                 {
-                    float dist = Vector3.Distance(b.transform.position, worldPos);
-                    if (dist <= b.sightRadius)
+                    float dx = b.transform.position.x - worldPos.x;
+                    float dz = b.transform.position.z - worldPos.z;
+                    if (dx * dx + dz * dz <= b.sightRadius * b.sightRadius)
                     {
                         return true;
                     }
@@ -365,6 +364,50 @@ namespace CSE377.Gameplay
             }
 
             return false;
+        }
+
+        public static bool IsEnemyUnitVisibleForTeam(UnitTeam viewerTeam, RTSUnit unit)
+        {
+            if (unit == null || unit.currentHp <= 0 || unit.isDead || unit.team == viewerTeam) return false;
+            if (Instance == null) return true;
+            if (!Instance.IsPositionInTeamVision(viewerTeam, unit.transform.position)) return false;
+
+            if (viewerTeam == RTSGameManager.LocalPlayerTeam && Instance.cellStates != null)
+            {
+                if (Instance.GetCellStateAtWorldPos(unit.transform.position) == FogCellState.Unexplored)
+                    return false;
+            }
+            return true;
+        }
+
+        public static bool IsEnemyBuildingVisibleForTeam(UnitTeam viewerTeam, RTSBuilding building, Vector3 surfacePoint, bool requireActiveVision)
+        {
+            if (building == null || building.currentHp <= 0 || building.team == viewerTeam) return false;
+            if (Instance == null) return true;
+
+            if (viewerTeam == RTSGameManager.LocalPlayerTeam && Instance.cellStates != null)
+            {
+                bool discoveredCenter = Instance.GetCellStateAtWorldPos(building.transform.position) != FogCellState.Unexplored;
+                bool discoveredSurface = Instance.GetCellStateAtWorldPos(surfacePoint) != FogCellState.Unexplored;
+                var disc = building.GetComponent<RTSFogDiscoverable>();
+                if (!discoveredCenter && !discoveredSurface && (disc == null || !disc.isDiscovered))
+                    return false;
+            }
+
+            if (requireActiveVision)
+            {
+                return Instance.IsPositionInTeamVision(viewerTeam, building.transform.position)
+                    || Instance.IsPositionInTeamVision(viewerTeam, surfacePoint);
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Verilen dünya koordinatının yerel oyuncunun herhangi bir dost birimi veya binası tarafından görülüp görülmediğini hesaplar.
+        /// </summary>
+        public bool IsPositionInPlayerVision(Vector3 worldPos)
+        {
+            return IsPositionInTeamVision(RTSGameManager.LocalPlayerTeam, worldPos);
         }
 
         /// <summary>
