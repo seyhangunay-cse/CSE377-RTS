@@ -140,6 +140,12 @@ namespace CSE377.Gameplay
 #if UNITY_EDITOR
             UnityEditor.PlayerSettings.runInBackground = true;
 #endif
+#if PHOTON_UNITY_NETWORKING
+            // StartScreen / Lobi ekranında Time.timeScale = 0f iken FixedUpdate çalışmaz.
+            // PUN 2'nin LateUpdate üzerinden paket gönderip alabilmesi için eşiği > 0 yapıyoruz.
+            PhotonNetwork.MinimalTimeScaleToDispatchInFixedUpdate = 0.05f;
+            PhotonNetwork.IsMessageQueueRunning = true;
+#endif
             if (Instance == null)
             {
                 Instance = this;
@@ -158,12 +164,19 @@ namespace CSE377.Gameplay
             Application.runInBackground = true;
             nextRivalActionTime = Time.time + 15f;
 #if PHOTON_UNITY_NETWORKING
+            PhotonNetwork.MinimalTimeScaleToDispatchInFixedUpdate = 0.05f;
+            PhotonNetwork.IsMessageQueueRunning = true;
             ApplyPhotonAppSettings();
             PhotonNetwork.NickName = localPlayerName;
             PhotonNetwork.AutomaticallySyncScene = true;
+            lastObservedPhotonState = PhotonNetwork.NetworkClientState;
+            lastPhotonStateChangeTime = Time.unscaledTime;
             if (!PhotonNetwork.IsConnected || PhotonNetwork.NetworkClientState == ClientState.Disconnected)
             {
                 PhotonNetwork.ConnectUsingSettings();
+                lastObservedPhotonState = PhotonNetwork.NetworkClientState;
+                lastPhotonStateChangeTime = Time.unscaledTime;
+                nextPhotonReconnectTime = Time.unscaledTime + 3.0f;
             }
 #endif
             RefreshOpenRoomsRegistry();
@@ -181,23 +194,36 @@ namespace CSE377.Gameplay
         private readonly Dictionary<string, RoomInfo> photonCloudRooms = new Dictionary<string, RoomInfo>(StringComparer.OrdinalIgnoreCase);
         private bool pendingPhotonRoomOp = false;
         private float nextPhotonReconnectTime = 0f;
+        private float lastPhotonStateChangeTime = -999f;
+        private ClientState lastObservedPhotonState = ClientState.PeerCreated;
+        private ExitGames.Client.Photon.ConnectionProtocol activePhotonProtocol = ExitGames.Client.Photon.ConnectionProtocol.Tcp;
         public string lastPhotonDisconnectReason = "";
+
+        private void SwitchPhotonProtocol()
+        {
+            activePhotonProtocol = (activePhotonProtocol == ExitGames.Client.Photon.ConnectionProtocol.Tcp)
+                ? ExitGames.Client.Photon.ConnectionProtocol.Udp
+                : ExitGames.Client.Photon.ConnectionProtocol.Tcp;
+            Debug.LogWarning($"[PHOTON] Bağlantı protokolü değiştiriliyor -> {activePhotonProtocol}");
+        }
 
         private void ApplyPhotonAppSettings()
         {
+            PhotonNetwork.MinimalTimeScaleToDispatchInFixedUpdate = 0.05f;
+            PhotonNetwork.IsMessageQueueRunning = true;
             if (PhotonNetwork.PhotonServerSettings != null && PhotonNetwork.PhotonServerSettings.AppSettings != null)
             {
                 var appSettings = PhotonNetwork.PhotonServerSettings.AppSettings;
                 appSettings.AppIdRealtime = photonAppId;
                 appSettings.FixedRegion = "eu";
-                // Kampüs/yurt ve ev ağlarında UDP/WSS bloklarını aşmak için güvenilir TCP protokolü kullan
-                appSettings.Protocol = ExitGames.Client.Photon.ConnectionProtocol.Tcp;
+                // Kampüs/yurt ve ev ağlarında WSS TLS sorunlarını aşmak için TCP / UDP arasında otomatik geçiş destekli protokol kullan
+                appSettings.Protocol = activePhotonProtocol;
                 appSettings.EnableProtocolFallback = false;
             }
             if (PhotonNetwork.NetworkingClient != null && PhotonNetwork.NetworkingClient.LoadBalancingPeer != null
-                && !PhotonNetwork.IsConnected)
+                && (!PhotonNetwork.IsConnected || PhotonNetwork.NetworkClientState == ClientState.Disconnected))
             {
-                PhotonNetwork.NetworkingClient.LoadBalancingPeer.TransportProtocol = ExitGames.Client.Photon.ConnectionProtocol.Tcp;
+                PhotonNetwork.NetworkingClient.LoadBalancingPeer.TransportProtocol = activePhotonProtocol;
             }
         }
 
@@ -209,37 +235,40 @@ namespace CSE377.Gameplay
             {
                 PhotonNetwork.AutomaticallySyncScene = true;
                 PhotonNetwork.ConnectUsingSettings();
+                lastPhotonStateChangeTime = Time.unscaledTime;
             }
             else if (PhotonNetwork.NetworkClientState == ClientState.ConnectedToMasterServer && !PhotonNetwork.InLobby && !PhotonNetwork.InRoom)
             {
                 PhotonNetwork.JoinLobby();
+                lastPhotonStateChangeTime = Time.unscaledTime;
             }
         }
 
         public string GetPhotonCloudStatus(out bool isReady, out bool hasError)
         {
             ClientState st = PhotonNetwork.NetworkClientState;
+            string protoLabel = activePhotonProtocol == ExitGames.Client.Photon.ConnectionProtocol.Tcp ? "TCP" : "UDP";
             if (PhotonNetwork.InRoom)
             {
                 isReady = true;
                 hasError = false;
-                return $"🟢 PHOTON CLOUD BAĞLI (eu / TCP • Oda: {PhotonNetwork.CurrentRoom?.Name})";
+                return $"🟢 PHOTON CLOUD BAĞLI (eu / {protoLabel} • Oda: {PhotonNetwork.CurrentRoom?.Name})";
             }
             if (st == ClientState.JoinedLobby)
             {
                 isReady = true;
                 hasError = false;
-                return $"🟢 PHOTON CLOUD HAZIR (Bölge: eu • TCP • Lobi Açık • Oda: {photonCloudRooms.Count})";
+                return $"🟢 PHOTON CLOUD HAZIR (Bölge: eu • {protoLabel} • Lobi Açık • Oda: {photonCloudRooms.Count})";
             }
             if (!string.IsNullOrEmpty(lastPhotonDisconnectReason) && (st == ClientState.Disconnected || st == ClientState.PeerCreated))
             {
                 isReady = false;
                 hasError = true;
-                return $"🔴 PHOTON BAĞLANTI HATASI: {lastPhotonDisconnectReason} (Yeniden deneniyor...)";
+                return $"🔴 PHOTON BAĞLANTI HATASI ({protoLabel}): {lastPhotonDisconnectReason} (Yeniden deneniyor...)";
             }
             isReady = false;
             hasError = false;
-            return $"⏳ PHOTON CLOUD'A BAĞLANILIYOR... ({st})";
+            return $"⏳ PHOTON CLOUD'A BAĞLANILIYOR... ({st} • {protoLabel})";
         }
 
         public override void OnEnable()
@@ -496,10 +525,63 @@ namespace CSE377.Gameplay
             }
 
 #if PHOTON_UNITY_NETWORKING
-            if (Time.unscaledTime >= nextPhotonReconnectTime && (!PhotonNetwork.IsConnected || PhotonNetwork.NetworkClientState == ClientState.Disconnected))
+            if (PhotonNetwork.MinimalTimeScaleToDispatchInFixedUpdate < 0.05f)
             {
-                nextPhotonReconnectTime = Time.unscaledTime + 3.0f;
-                EnsurePhotonLobbyOrReconnect();
+                PhotonNetwork.MinimalTimeScaleToDispatchInFixedUpdate = 0.05f;
+            }
+            if (!PhotonNetwork.IsMessageQueueRunning)
+            {
+                PhotonNetwork.IsMessageQueueRunning = true;
+            }
+
+            ClientState photonState = PhotonNetwork.NetworkClientState;
+            if (photonState != lastObservedPhotonState)
+            {
+                Debug.Log($"[PHOTON DURUM] {lastObservedPhotonState} -> {photonState} (Protokol: {activePhotonProtocol}, Bölge: {PhotonNetwork.CloudRegion})");
+                lastObservedPhotonState = photonState;
+                lastPhotonStateChangeTime = Time.unscaledTime;
+                if (photonState == ClientState.JoinedLobby || photonState == ClientState.Joined)
+                {
+                    lastPhotonDisconnectReason = "";
+                }
+                OnRoomStateChanged?.Invoke();
+            }
+
+            if (Time.unscaledTime >= nextPhotonReconnectTime)
+            {
+                bool disconnected = !PhotonNetwork.IsConnected || photonState == ClientState.Disconnected;
+                bool inTransientState = !disconnected
+                    && photonState != ClientState.JoinedLobby
+                    && photonState != ClientState.Joined
+                    && photonState != ClientState.ConnectedToMasterServer;
+
+                if (disconnected)
+                {
+                    nextPhotonReconnectTime = Time.unscaledTime + 3.0f;
+                    if (!string.IsNullOrEmpty(lastPhotonDisconnectReason))
+                    {
+                        SwitchPhotonProtocol();
+                    }
+                    EnsurePhotonLobbyOrReconnect();
+                }
+                else if (inTransientState && (Time.unscaledTime - lastPhotonStateChangeTime) >= 7.0f)
+                {
+                    Debug.LogWarning($"[PHOTON] '{photonState}' aşamasında 7sn beklendi; protokol değiştirilip yeniden bağlanılıyor...");
+                    nextPhotonReconnectTime = Time.unscaledTime + 1.5f;
+                    lastPhotonStateChangeTime = Time.unscaledTime;
+                    SwitchPhotonProtocol();
+                    PhotonNetwork.Disconnect();
+                    if (!PhotonNetwork.IsConnected || PhotonNetwork.NetworkClientState == ClientState.Disconnected)
+                    {
+                        EnsurePhotonLobbyOrReconnect();
+                    }
+                }
+                else if (photonState == ClientState.ConnectedToMasterServer && !PhotonNetwork.InLobby && !PhotonNetwork.InRoom
+                    && (Time.unscaledTime - lastPhotonStateChangeTime) >= 2.0f)
+                {
+                    nextPhotonReconnectTime = Time.unscaledTime + 2.0f;
+                    EnsurePhotonLobbyOrReconnect();
+                }
             }
 #endif
 
