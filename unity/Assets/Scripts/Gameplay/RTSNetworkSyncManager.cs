@@ -678,6 +678,23 @@ namespace CSE377.Gameplay
 
             // Kendi açtığımız odaya aynı istemciden 2. oyuncu olarak girmeyi engelle!
             var existingRoom = activeOpenRooms.Find(r => r != null && string.Equals(r.roomName, normalizedRoom, StringComparison.OrdinalIgnoreCase));
+            if (existingRoom != null && !string.IsNullOrEmpty(existingRoom.roomName))
+            {
+                normalizedRoom = existingRoom.roomName;
+            }
+#if PHOTON_UNITY_NETWORKING
+            else
+            {
+                foreach (var kv in photonCloudRooms)
+                {
+                    if (kv.Value != null && string.Equals(kv.Value.Name, normalizedRoom, StringComparison.OrdinalIgnoreCase))
+                    {
+                        normalizedRoom = kv.Value.Name;
+                        break;
+                    }
+                }
+            }
+#endif
             bool isOwnHostedRoom = (existingRoom != null && existingRoom.hostInstanceId == clientInstanceId)
                 || (isRoomConnected && isHost && string.Equals(matchRoomId, normalizedRoom, StringComparison.OrdinalIgnoreCase));
 
@@ -770,7 +787,7 @@ namespace CSE377.Gameplay
                 }
             }
             PhotonNetwork.NickName = localPlayerName;
-            if (!PhotonNetwork.IsConnected)
+            if (!PhotonNetwork.IsConnected || PhotonNetwork.NetworkClientState == ClientState.Disconnected)
             {
                 pendingPhotonRoomOp = true;
                 PhotonNetwork.AutomaticallySyncScene = true;

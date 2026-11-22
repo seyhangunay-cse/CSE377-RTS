@@ -524,7 +524,7 @@ namespace CSE377.Gameplay
                     {
                         string pName = mpPlayerNameInput.text.Trim();
                         string roomCode = (startScreenRoomInput != null && !string.IsNullOrWhiteSpace(startScreenRoomInput.text))
-                            ? startScreenRoomInput.text.Trim().ToUpperInvariant()
+                            ? startScreenRoomInput.text.Trim()
                             : "ODA-101";
                         RTSNetworkSyncManager.Instance.JoinPhotonRoom(pName, roomCode);
                     }
@@ -546,7 +546,7 @@ namespace CSE377.Gameplay
                     {
                         if (startScreenRoomInput != null && !string.IsNullOrWhiteSpace(startScreenRoomInput.text))
                         {
-                            RTSNetworkSyncManager.Instance.matchRoomId = startScreenRoomInput.text.Trim().ToUpperInvariant();
+                            RTSNetworkSyncManager.Instance.matchRoomId = startScreenRoomInput.text.Trim();
                         }
                         RTSNetworkSyncManager.Instance.CycleAssignedTeam();
                     }
