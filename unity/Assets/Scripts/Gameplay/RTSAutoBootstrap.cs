@@ -2316,33 +2316,42 @@ namespace CSE377.Gameplay
             CreateUIText(actBtn5.transform, "Key5", "[S]", 10, new Color(1f, 0.85f, 0.35f), defaultFont, new Vector2(0.22f, 0.82f), new Vector2(28, 16)).fontStyle = FontStyle.Bold;
 
             // --- 3. AI STRATEGIC COMMANDER ÇEKMECESİ (Açılır-Kapanır Taktik Masası) ---
-            var aiBox = CreateUIPanel(canvasGo.transform, "AI_Commander_Box", new Vector2(0, 0), new Vector2(0, 0), new Vector2(0, 0), new Vector2(12, 202), new Vector2(440, 315), new Color(0.09f, 0.07f, 0.05f, 0.98f));
+            var aiBox = CreateUIPanel(canvasGo.transform, "AI_Commander_Box", new Vector2(0, 0), new Vector2(0, 0), new Vector2(0, 0), new Vector2(12, 202), new Vector2(465, 395), new Color(0.09f, 0.07f, 0.05f, 0.98f));
             CreateUIPanel(aiBox.transform, "AiBorder", new Vector2(0, 0), new Vector2(1, 1), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, new Color(0.85f, 0.70f, 0.28f, 0.45f));
             
-            var aiTitle = CreateUIText(aiBox.transform, "AiTitle", "KRALİYET STRATEJİK DANIŞMANI (AI)", 15, new Color(1f, 0.88f, 0.35f), defaultFont, new Vector2(0.45f, 0.92f), new Vector2(360, 24));
+            var aiTitle = CreateUIText(aiBox.transform, "AiTitle", "KRALİYET STRATEJİK DANIŞMANI (AI)", 15, new Color(1f, 0.88f, 0.35f), defaultFont, new Vector2(0.45f, 0.94f), new Vector2(380, 24));
             aiTitle.fontStyle = FontStyle.Bold;
 
-            var btnCloseAi = CreateUIButton(aiBox.transform, "BtnCloseAi", "✕", defaultFont, new Vector2(0.93f, 0.92f), new Vector2(28, 24), new Color(0.4f, 0.2f, 0.2f));
+            var btnCloseAi = CreateUIButton(aiBox.transform, "BtnCloseAi", "✕", defaultFont, new Vector2(0.93f, 0.94f), new Vector2(28, 24), new Color(0.4f, 0.2f, 0.2f));
+
+            // Canlı Sis, İşçi & Kaynak Odak İstihbarat Şeridi
+            var aiIntelBg = CreateUIPanel(aiBox.transform, "AiLiveIntel_Bg", new Vector2(0.5f, 0.82f), new Vector2(0.5f, 0.82f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(435, 44), new Color(0.06f, 0.08f, 0.11f, 0.94f));
+            CreateUIPanel(aiIntelBg.transform, "IntelBorder", new Vector2(0, 0), new Vector2(1, 1), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, new Color(0.35f, 0.65f, 0.85f, 0.35f));
+            var aiIntelTxt = CreateUIText(aiIntelBg.transform, "AiLiveIntelText", "Sis %0 • İşçiler: 0🌾 0🪵 0🪙 → Analiz bekleniyor", 11, new Color(0.82f, 0.92f, 1.0f), defaultFont, new Vector2(0.5f, 0.5f), new Vector2(422, 38));
+            aiIntelTxt.alignment = TextAnchor.MiddleCenter;
+
+            // Kapsamlı Analiz & Öneri Butonu
+            var btnAnalyze = CreateUIButton(aiBox.transform, "BtnAnalyze", "🔍 SİS, RAKİP & KAYNAK ANALİZİ AL (ÖNERİ)", defaultFont, new Vector2(0.5f, 0.70f), new Vector2(435, 32), new Color(0.14f, 0.38f, 0.52f));
 
             // 6 Taktiksel Hızlı Doktrin Butonu (2x3 Izgara)
             // Satır 1: Savunma & Tahkimat
-            var btnDefend = CreateUIButton(aiBox.transform, "BtnDefend", "Kuzey Kapısını Savun", defaultFont, new Vector2(0.26f, 0.76f), new Vector2(200, 30), new Color(0.55f, 0.18f, 0.18f));
-            var btnFortify = CreateUIButton(aiBox.transform, "BtnFortify", "Kule & Sur Tahkimatı", defaultFont, new Vector2(0.74f, 0.76f), new Vector2(200, 30), new Color(0.60f, 0.35f, 0.15f));
+            var btnDefend = CreateUIButton(aiBox.transform, "BtnDefend", "Kuzey Kapısını Savun", defaultFont, new Vector2(0.26f, 0.57f), new Vector2(210, 28), new Color(0.55f, 0.18f, 0.18f));
+            var btnFortify = CreateUIButton(aiBox.transform, "BtnFortify", "Kule & Sur Tahkimatı", defaultFont, new Vector2(0.74f, 0.57f), new Vector2(210, 28), new Color(0.60f, 0.35f, 0.15f));
 
             // Satır 2: Ekonomi & Feodal Çağ
-            var btnEconomy = CreateUIButton(aiBox.transform, "BtnEconomy", "Ekonomi & Tarla Kur", defaultFont, new Vector2(0.26f, 0.62f), new Vector2(200, 30), new Color(0.18f, 0.45f, 0.25f));
-            var btnTech = CreateUIButton(aiBox.transform, "BtnTech", "Feodal Çağ & Demirci", defaultFont, new Vector2(0.74f, 0.62f), new Vector2(200, 30), new Color(0.55f, 0.45f, 0.18f));
+            var btnEconomy = CreateUIButton(aiBox.transform, "BtnEconomy", "Ekonomi & İşçi Odakla", defaultFont, new Vector2(0.26f, 0.46f), new Vector2(210, 28), new Color(0.18f, 0.45f, 0.25f));
+            var btnTech = CreateUIButton(aiBox.transform, "BtnTech", "Feodal Çağ & Demirci", defaultFont, new Vector2(0.74f, 0.46f), new Vector2(210, 28), new Color(0.55f, 0.45f, 0.18f));
 
             // Satır 3: Karşı Taarruz & Harita Keşfi
-            var btnCounter = CreateUIButton(aiBox.transform, "BtnCounter", "Düşmana Karşı Taarruz", defaultFont, new Vector2(0.26f, 0.48f), new Vector2(200, 30), new Color(0.20f, 0.32f, 0.58f));
-            var btnScout = CreateUIButton(aiBox.transform, "BtnScout", "Sisli Haritayı Keşfet", defaultFont, new Vector2(0.74f, 0.48f), new Vector2(200, 30), new Color(0.16f, 0.46f, 0.50f));
+            var btnCounter = CreateUIButton(aiBox.transform, "BtnCounter", "Düşmana Karşı Taarruz", defaultFont, new Vector2(0.26f, 0.35f), new Vector2(210, 28), new Color(0.20f, 0.32f, 0.58f));
+            var btnScout = CreateUIButton(aiBox.transform, "BtnScout", "Sisli Haritayı Keşfet", defaultFont, new Vector2(0.74f, 0.35f), new Vector2(210, 28), new Color(0.16f, 0.46f, 0.50f));
 
             // Satır 4: Serbest Taktik ve Soru Girişi
-            var chatInput = CreateUIInputField(aiBox.transform, "CustomPromptInput", "Danışmana soru sorun (örn: 'Köprüye okçu gönder', 'Çağ nasıl atlarım?')...", defaultFont, new Vector2(0.39f, 0.30f), new Vector2(315, 32), new Color(0.14f, 0.12f, 0.10f, 1f));
-            var btnSendChat = CreateUIButton(aiBox.transform, "BtnSendPrompt", "GÖNDER", defaultFont, new Vector2(0.86f, 0.30f), new Vector2(85, 32), new Color(0.25f, 0.45f, 0.65f));
+            var chatInput = CreateUIInputField(aiBox.transform, "CustomPromptInput", "Soru sor (örn: 'Rakip ne yapıyor?', 'Neye odaklanayım?')...", defaultFont, new Vector2(0.39f, 0.21f), new Vector2(335, 32), new Color(0.14f, 0.12f, 0.10f, 1f));
+            var btnSendChat = CreateUIButton(aiBox.transform, "BtnSendPrompt", "GÖNDER", defaultFont, new Vector2(0.86f, 0.21f), new Vector2(90, 32), new Color(0.25f, 0.45f, 0.65f));
 
             // Satır 5: Danışman Durumu ve Tavsiye Mesajı
-            var aiStatus = CreateUIText(aiBox.transform, "AiStatus", "Komutan emirlerinizi bekliyor...", 12, new Color(0.88f, 0.90f, 0.95f), defaultFont, new Vector2(0.5f, 0.12f), new Vector2(410, 24));
+            var aiStatus = CreateUIText(aiBox.transform, "AiStatus", "Komutan emirlerinizi bekliyor...", 11, new Color(0.88f, 0.90f, 0.95f), defaultFont, new Vector2(0.5f, 0.08f), new Vector2(435, 24));
             aiBox.SetActive(false); // Başlangıçta kapalı, butonla açılır!
 
             hud = mgrGo.AddComponent<RTSHUDController>();
@@ -2361,6 +2370,8 @@ namespace CSE377.Gameplay
             hud.toggleAiCommanderBtn = btnAiToggle;
             hud.closeAiCommanderBtn = btnCloseAi;
             hud.topBarMenuBtn = menuBtn;
+            hud.analyzeBattlefieldBtn = btnAnalyze;
+            hud.aiLiveIntelText = aiIntelTxt;
             hud.defendNorthGateBtn = btnDefend;
             hud.fortificationBtn = btnFortify;
             hud.economyPlanBtn = btnEconomy;
@@ -2400,23 +2411,26 @@ namespace CSE377.Gameplay
             hud.gameManager = gameMgr;
 
             // --- 4. APPROVAL PANEL (AI Stratejik Plan Onay Modalı) ---
-            var panelRoot = CreateUIPanel(canvasGo.transform, "ApprovalPanel_Root", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(580, 420), new Color(0.12f, 0.15f, 0.2f, 0.97f));
-            CreateUIText(panelRoot.transform, "PanelTitle", "KOMUTANIN STRATEJİK EYLEM PLANI", 18, Color.white, defaultFont, new Vector2(0.5f, 0.92f), new Vector2(540, 35));
+            var panelRoot = CreateUIPanel(canvasGo.transform, "ApprovalPanel_Root", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(660, 510), new Color(0.12f, 0.15f, 0.2f, 0.97f));
+            CreateUIText(panelRoot.transform, "PanelTitle", "KOMUTANIN STRATEJİK ANALİZ & EYLEM PLANI", 18, Color.white, defaultFont, new Vector2(0.5f, 0.94f), new Vector2(610, 30));
 
-            var summary = CreateUIText(panelRoot.transform, "SummaryText", "Plan özeti burada gösterilecek...", 14, Color.white, defaultFont, new Vector2(0.5f, 0.78f), new Vector2(520, 50));
-            var conf = CreateUIText(panelRoot.transform, "ConfidenceText", "Güven Seviyesi: %85", 14, Color.yellow, defaultFont, new Vector2(0.5f, 0.68f), new Vector2(520, 25));
+            var summary = CreateUIText(panelRoot.transform, "SummaryText", "Plan özeti burada gösterilecek...", 13, new Color(0.95f, 0.97f, 1.0f), defaultFont, new Vector2(0.5f, 0.77f), new Vector2(600, 118));
+            summary.alignment = TextAnchor.UpperLeft;
+            summary.horizontalOverflow = HorizontalWrapMode.Wrap;
+            summary.verticalOverflow = VerticalWrapMode.Overflow;
+            var conf = CreateUIText(panelRoot.transform, "ConfidenceText", "Güven Seviyesi: %85", 13, Color.yellow, defaultFont, new Vector2(0.5f, 0.62f), new Vector2(600, 22));
 
-            var listContainer = CreateUIPanel(panelRoot.transform, "ActionsContainer", new Vector2(0.5f, 0.42f), new Vector2(0.5f, 0.42f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(520, 140), new Color(0.06f, 0.08f, 0.1f, 0.8f));
+            var listContainer = CreateUIPanel(panelRoot.transform, "ActionsContainer", new Vector2(0.5f, 0.40f), new Vector2(0.5f, 0.40f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(600, 175), new Color(0.06f, 0.08f, 0.1f, 0.85f));
             var vlg = listContainer.AddComponent<VerticalLayoutGroup>();
             vlg.childControlWidth = true;
             vlg.childControlHeight = false;
             vlg.spacing = 6;
             vlg.padding = new RectOffset(10, 10, 10, 10);
 
-            var statusTxt = CreateUIText(panelRoot.transform, "StatusText", "Oyuncu onayı bekleniyor...", 13, Color.gray, defaultFont, new Vector2(0.5f, 0.18f), new Vector2(520, 25));
+            var statusTxt = CreateUIText(panelRoot.transform, "StatusText", "Oyuncu onayı bekleniyor...", 13, Color.gray, defaultFont, new Vector2(0.5f, 0.18f), new Vector2(600, 24));
 
-            var btnApprove = CreateUIButton(panelRoot.transform, "BtnApprove", "PLANI ONAYLA", defaultFont, new Vector2(0.28f, 0.08f), new Vector2(230, 42), new Color(0.2f, 0.65f, 0.35f));
-            var btnReject = CreateUIButton(panelRoot.transform, "BtnReject", "REDDET", defaultFont, new Vector2(0.72f, 0.08f), new Vector2(230, 42), new Color(0.75f, 0.25f, 0.25f));
+            var btnApprove = CreateUIButton(panelRoot.transform, "BtnApprove", "PLANI ONAYLA VE UYGULA", defaultFont, new Vector2(0.28f, 0.08f), new Vector2(260, 42), new Color(0.2f, 0.65f, 0.35f));
+            var btnReject = CreateUIButton(panelRoot.transform, "BtnReject", "REDDET", defaultFont, new Vector2(0.72f, 0.08f), new Vector2(240, 42), new Color(0.75f, 0.25f, 0.25f));
 
             approvalUI = mgrGo.AddComponent<ApprovalPanelUI>();
             approvalUI.Initialize(panelRoot, summary, conf, statusTxt, listContainer.transform, btnApprove, btnReject, client);

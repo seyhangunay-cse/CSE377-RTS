@@ -14,7 +14,11 @@ namespace CSE377.AI
         public string match_id = "match-01";
         public string team_id = "BLUE";
         public ResourceState resources = new ResourceState();
+        public WorkerAllocationState workers = new WorkerAllocationState();
+        public PopulationState population = new PopulationState();
+        public FogIntelState fog_intel = new FogIntelState();
         public List<UnitGroup> army = new List<UnitGroup>();
+        public List<UnitGroup> friendly_buildings = new List<UnitGroup>();
         public List<EnemyGroup> visible_enemies = new List<EnemyGroup>();
         public List<string> unlocked_tech = new List<string>();
         public List<GameEventSnapshot> recent_events = new List<GameEventSnapshot>();
@@ -32,6 +36,73 @@ namespace CSE377.AI
                 this.food = food;
                 this.gold = gold;
             }
+        }
+
+        [Serializable]
+        public class WorkerAllocationState
+        {
+            public int total;
+            public int food;
+            public int wood;
+            public int gold;
+            public int building;
+            public int idle;
+        }
+
+        [Serializable]
+        public class PopulationState
+        {
+            public int current = 4;
+            public int max = 10;
+        }
+
+        [Serializable]
+        public class EnemyMemoryGroup
+        {
+            public string type;
+            public int count;
+            public string zone;
+            public int seconds_ago;
+            public bool currently_visible;
+
+            public EnemyMemoryGroup(string type, int count, string zone, int secondsAgo, bool currentlyVisible)
+            {
+                this.type = type;
+                this.count = count;
+                this.zone = zone;
+                this.seconds_ago = secondsAgo;
+                this.currently_visible = currentlyVisible;
+            }
+        }
+
+        [Serializable]
+        public class EnemyBuildingIntel
+        {
+            public string type;
+            public int count;
+            public string zone;
+            public bool currently_visible;
+
+            public EnemyBuildingIntel(string type, int count, string zone, bool currentlyVisible)
+            {
+                this.type = type;
+                this.count = count;
+                this.zone = zone;
+                this.currently_visible = currentlyVisible;
+            }
+        }
+
+        [Serializable]
+        public class FogIntelState
+        {
+            public int explored_percent;
+            public int visible_percent;
+            public int discovered_wood_nodes;
+            public int discovered_food_nodes;
+            public int discovered_gold_nodes;
+            public int seconds_until_next_raid = -1;
+            public List<EnemyMemoryGroup> last_known_enemies = new List<EnemyMemoryGroup>();
+            public List<EnemyBuildingIntel> discovered_enemy_buildings = new List<EnemyBuildingIntel>();
         }
 
         [Serializable]

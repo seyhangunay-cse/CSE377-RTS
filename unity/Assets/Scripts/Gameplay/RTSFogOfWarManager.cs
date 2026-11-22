@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
+using CSE377.AI;
 
 namespace CSE377.Gameplay
 {
@@ -38,6 +40,18 @@ namespace CSE377.Gameplay
         private GameObject fogGridRoot;
         private float nextUpdateTime = 0f;
         private float nextSpottedAlarmTime = 0f;
+        private int cachedExploredPercent = 0;
+        private int cachedVisiblePercent = 0;
+
+        private class EnemyMemoryEntry
+        {
+            public string unitType;
+            public string zone;
+            public float lastSeenTime;
+            public bool currentlyVisible;
+        }
+
+        private readonly Dictionary<int, EnemyMemoryEntry> rememberedEnemyUnits = new Dictionary<int, EnemyMemoryEntry>();
 
         private void Awake()
         {
@@ -105,6 +119,9 @@ namespace CSE377.Gameplay
         /// </summary>
         public void ResetFog()
         {
+            rememberedEnemyUnits.Clear();
+            cachedExploredPercent = 0;
+            cachedVisiblePercent = 0;
             if (cellStates == null || fogPixels == null) return;
 
             Color32 unexpColor32 = unexploredColor;
@@ -150,6 +167,9 @@ namespace CSE377.Gameplay
                 Color32 unexpColor32 = unexploredColor;
                 Color32 expColor32 = exploredColor;
                 Color32 visColor32 = visibleColor;
+                int exploredCount = 0;
+                int visibleCount = 0;
+                int interiorCount = 0;
 
                 for (int z = 0; z < gridResolution; z++)
                 {
@@ -159,6 +179,7 @@ namespace CSE377.Gameplay
                         // Harita sonu en dış çerçeve (x == 0, x == 63, z == 0, z == 63 -> ±78.75m) her zaman simsiyah kalır
                         bool isMapEdgeAbyss = (x == 0 || x == gridResolution - 1 || z == 0 || z == gridResolution - 1);
                         bool isCurrentlyVisible = !isMapEdgeAbyss && IsPositionInPlayerVision(cellCenter);
+                        if (!isMapEdgeAbyss) interiorCount++;
                         // Unity varsayılan Plane UV eksenleri (U: Doğu'dan Batı'ya, V: Kuzey'den Güney'e)
                         // ters eşleştiği için hem X (sütun) hem Z (satır) piksel indeksleri ters çevrilir:
                         int texX = (gridResolution - 1) - x;
@@ -174,6 +195,8 @@ namespace CSE377.Gameplay
                         {
                             cellStates[x, z] = FogCellState.Visible;
                             fogPixels[pIdx] = visColor32;
+                            exploredCount++;
+                            visibleCount++;
                         }
                         else
                         {
@@ -181,6 +204,7 @@ namespace CSE377.Gameplay
                             {
                                 cellStates[x, z] = FogCellState.Explored;
                                 fogPixels[pIdx] = expColor32;
+                                exploredCount++;
                             }
                             else
                             {
@@ -191,6 +215,12 @@ namespace CSE377.Gameplay
                     }
                 }
 
+                if (interiorCount > 0)
+                {
+                    cachedExploredPercent = Mathf.Clamp(Mathf.RoundToInt(exploredCount * 100f / interiorCount), 0, 100);
+                    cachedVisiblePercent = Mathf.Clamp(Mathf.RoundToInt(visibleCount * 100f / interiorCount), 0, 100);
+                }
+
                 if (fogTexture != null)
                 {
                     fogTexture.SetPixels32(fogPixels);
@@ -198,8 +228,10 @@ namespace CSE377.Gameplay
                 }
             }
 
-            // 2. Birimlerin (Dost ve Rakip) görünürlüğünü güncelle
+            // 2. Birimlerin (Dost ve Rakip) görünürlüğünü ve hilesiz gözcü istihbarat hafızasını güncelle
             UnitTeam localTeam = RTSGameManager.LocalPlayerTeam;
+            float now = Time.time;
+            var activeEnemyIds = new HashSet<int>();
             foreach (var unit in RTSUnit.AllUnits)
             {
                 if (unit == null) continue;
@@ -213,19 +245,59 @@ namespace CSE377.Gameplay
                 }
                 else
                 {
-                    bool isVisible = IsUnitVisible(unit);
+                    int uid = unit.GetInstanceID();
+                    bool isAlive = unit.currentHp > 0;
+                    bool isVisible = isAlive && IsUnitVisible(unit);
+                    if (isAlive) activeEnemyIds.Add(uid);
+
+                    if (isVisible)
+                    {
+                        rememberedEnemyUnits[uid] = new EnemyMemoryEntry
+                        {
+                            unitType = string.IsNullOrEmpty(unit.unitType) ? "spearman" : unit.unitType.ToLowerInvariant(),
+                            zone = GetLogicalZoneName(unit.transform.position, localTeam),
+                            lastSeenTime = now,
+                            currentlyVisible = true
+                        };
+                    }
+                    else if (rememberedEnemyUnits.TryGetValue(uid, out var mem))
+                    {
+                        if (!isAlive && IsPositionInPlayerVision(unit.transform.position))
+                        {
+                            rememberedEnemyUnits.Remove(uid);
+                        }
+                        else
+                        {
+                            mem.currentlyVisible = false;
+                        }
+                    }
+
                     if (!unit.isFogVisible && isVisible)
                     {
                         // Rakip birimi sis arkasından ilk defa oyuncunun görüş alanına girdi!
-                        if (Time.time >= nextSpottedAlarmTime)
+                        if (now >= nextSpottedAlarmTime)
                         {
-                            nextSpottedAlarmTime = Time.time + 12f;
+                            nextSpottedAlarmTime = now + 12f;
                             RTSHUDController.Instance?.SetAiStatus("⚠️ GÖZCÜ RAPORU: Düşman birliği tespit edildi!", Color.yellow);
                             RTSAudioManager.Instance?.PlaySound(RTSSoundType.AlarmHorn);
                         }
                     }
                     unit.SetFogOfWarVisibility(isVisible);
                 }
+            }
+
+            // Ölü / sahneden kalkmış veya 120sn'den eski hafıza kayıtlarını temizle
+            var staleIds = new List<int>();
+            foreach (var kv in rememberedEnemyUnits)
+            {
+                if ((!activeEnemyIds.Contains(kv.Key) && kv.Value.currentlyVisible) || (now - kv.Value.lastSeenTime > 120f))
+                {
+                    staleIds.Add(kv.Key);
+                }
+            }
+            for (int i = 0; i < staleIds.Count; i++)
+            {
+                rememberedEnemyUnits.Remove(staleIds[i]);
             }
 
             // 3. Doğal Kaynaklar (Altın Madenleri ve Ağaçlar)
@@ -403,6 +475,91 @@ namespace CSE377.Gameplay
             }
 
             return closestUnexplored;
+        }
+
+        public void GetFogCoverage(out int exploredPercent, out int visiblePercent)
+        {
+            exploredPercent = cachedExploredPercent;
+            visiblePercent = cachedVisiblePercent;
+        }
+
+        public static string GetLogicalZoneName(Vector3 pos, UnitTeam viewerTeam)
+        {
+            Vector3 myBase = (viewerTeam == UnitTeam.Enemy) ? RTSAutoBootstrap.CurrentEnemyBasePos : RTSAutoBootstrap.CurrentPlayerBasePos;
+            Vector3 enemyBase = (viewerTeam == UnitTeam.Enemy) ? RTSAutoBootstrap.CurrentPlayerBasePos : RTSAutoBootstrap.CurrentEnemyBasePos;
+
+            if (Vector3.Distance(pos, myBase) <= 22f) return "main_base";
+            if (Vector3.Distance(pos, enemyBase) <= 22f) return "enemy_base";
+            if (pos.x < -18f) return "west_flank";
+            if (pos.x > 18f) return "east_flank";
+            return "north_gate";
+        }
+
+        /// <summary>
+        /// Sadece oyuncunun keşfettiği (Explored/Visible) alanlardaki kaynak, düşman binası
+        /// ve gözcü hafızasında kalmış düşman birim bilgilerini doldurur (Sıfır hile).
+        /// </summary>
+        public void FillSnapshotFogIntel(AiSafeSnapshot.FogIntelState intel, UnitTeam viewerTeam)
+        {
+            if (intel == null) return;
+            intel.explored_percent = cachedExploredPercent;
+            intel.visible_percent = cachedVisiblePercent;
+
+            int woodNodes = 0, foodNodes = 0, goldNodes = 0;
+            foreach (var res in RTSResourceSource.AllSources)
+            {
+                if (res == null || res.remainingAmount <= 0) continue;
+                if (GetCellStateAtWorldPos(res.transform.position) == FogCellState.Unexplored) continue;
+                if (res.resourceType == RTSResourceType.Wood) woodNodes++;
+                else if (res.resourceType == RTSResourceType.Gold) goldNodes++;
+                else foodNodes++;
+            }
+            intel.discovered_wood_nodes = woodNodes;
+            intel.discovered_food_nodes = foodNodes;
+            intel.discovered_gold_nodes = goldNodes;
+
+            // Keşfedilmiş düşman binaları (gri sis altındakiler dahil; hiç keşfedilmemişler HARİÇ)
+            var bldGroups = new Dictionary<(string type, string zone, bool vis), int>();
+            foreach (var b in RTSBuilding.AllBuildings)
+            {
+                if (b == null || b.currentHp <= 0 || b.team == viewerTeam) continue;
+                var cellState = GetCellStateAtWorldPos(b.transform.position);
+                if (cellState == FogCellState.Unexplored) continue;
+
+                bool currentlyVis = (cellState == FogCellState.Visible);
+                string bType = b.buildingType.ToString().ToLowerInvariant();
+                string zone = GetLogicalZoneName(b.transform.position, viewerTeam);
+                var key = (bType, zone, currentlyVis);
+                bldGroups[key] = bldGroups.TryGetValue(key, out int c) ? c + 1 : 1;
+            }
+            foreach (var kv in bldGroups)
+            {
+                intel.discovered_enemy_buildings.Add(new AiSafeSnapshot.EnemyBuildingIntel(kv.Key.type, kv.Value, kv.Key.zone, kv.Key.vis));
+            }
+
+            // Aktif görüşteki + son 120sn sis hafızasındaki düşman birimleri
+            float now = Time.time;
+            var memGroups = new Dictionary<(string type, string zone, bool vis), (int count, int minSecondsAgo)>();
+            foreach (var kv in rememberedEnemyUnits)
+            {
+                var mem = kv.Value;
+                if (mem == null) continue;
+                int secAgo = mem.currentlyVisible ? 0 : Mathf.Max(1, Mathf.RoundToInt(now - mem.lastSeenTime));
+                var key = (mem.unitType, mem.zone, mem.currentlyVisible);
+                if (memGroups.TryGetValue(key, out var existing))
+                {
+                    memGroups[key] = (existing.count + 1, Math.Min(existing.minSecondsAgo, secAgo));
+                }
+                else
+                {
+                    memGroups[key] = (1, secAgo);
+                }
+            }
+            foreach (var kv in memGroups)
+            {
+                intel.last_known_enemies.Add(new AiSafeSnapshot.EnemyMemoryGroup(
+                    kv.Key.type, kv.Value.count, kv.Key.zone, kv.Value.minSecondsAgo, kv.Key.vis));
+            }
         }
     }
 }

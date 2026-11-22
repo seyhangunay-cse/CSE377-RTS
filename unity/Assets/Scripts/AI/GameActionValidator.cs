@@ -228,6 +228,13 @@ namespace CSE377.AI
                     // Taarruz ve hücum eylemleri kaynak tüketmez; sahadaki muharip birlikler doğrudan hedefe yönlendirilir
                     return ValidationResult.Success();
 
+                case "ASSIGN_GATHER":
+                    if (snapshot != null && snapshot.workers != null && snapshot.workers.total <= 0)
+                    {
+                        return ValidationResult.Fail("Sahada kaynaklara yönlendirilecek canlı köylü bulunmuyor.");
+                    }
+                    return ValidationResult.Success();
+
                 default:
                     return ValidationResult.Fail($"Bilinmeyen action_type: {action.action_type}");
             }

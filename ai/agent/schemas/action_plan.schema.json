@@ -10,7 +10,7 @@
     "properties": {
         "summary": {
             "type": "string",
-            "maxLength": 400
+            "maxLength": 650
         },
         "confidence": {
             "type": "number",
@@ -37,7 +37,8 @@
                             "SCOUT",
                             "EXPLORE",
                             "ATTACK",
-                            "ATTACK_MOVE"
+                            "ATTACK_MOVE",
+                            "ASSIGN_GATHER"
                         ]
                     },
                     "unit_type": {
@@ -56,7 +57,7 @@
                     },
                     "reason": {
                         "type": "string",
-                        "maxLength": 250
+                        "maxLength": 320
                     }
                 },
                 "additionalProperties": false

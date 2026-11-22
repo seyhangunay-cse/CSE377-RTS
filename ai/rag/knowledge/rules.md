@@ -55,3 +55,10 @@ Bu doküman, AI Strategic Commander ve insan oyuncu için geçerli temel kuralla
 - Yeni asker veya köylü üretilebilmesi için mevcut nüfusun azami nüfustan az olması şarttır.
 - Nüfus sınırına yaklaşıldığında veya ulaşıldığında köylüler ile Ev (`house`) inşa edilmelidir (Maliyet: 30 Odun, her ev +5 nüfus kapasitesi sağlar, azami 50).
 - Nüfus dolu olduğunda (`population == max_population`) birim üretilemez; öncelikle `BUILD` eylemi ile `house` inşa edilmelidir.
+
+---
+
+### Kural 8: Ekonomi Dengesi, İşçi Odağı (ASSIGN_GATHER) ve Sis İçi Rakip İstihbaratı
+- `get_worker_and_economy_report` aracı mevcut Odun/Gıda/Altın stoklarını, köylü dağılımını (`food`, `wood`, `gold`, `idle`) ve odaklanılması gereken öncelikli kaynağı döner.
+- Boşta (`idle > 0`) köylü varsa veya kritik bir kaynakta işçi yoksa (`w_food == 0`, `w_wood == 0` veya `w_gold == 0`), `ASSIGN_GATHER` eylemi ile (`unit_type: "villager"`, `target_zone: "food" | "wood" | "gold"`) köylüler o kaynağa yönlendirilmelidir.
+- `get_fog_intelligence` aracı savaş sisi dışında keşfedilmiş düşman binalarını (`discovered_enemy_buildings`) ve son görülen düşman izlerini (`last_known_enemies_in_fog`) verir; düşman Okçu Poligonu kurduysa Süvari, Kışla/Demirci ağırlıklıysa Okçu, Kule/Kale diktiyse Mancınık önerilir; keşif %35 altındaysa `SCOUT` çıkarılmalıdır.

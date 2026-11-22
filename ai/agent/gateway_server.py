@@ -142,33 +142,9 @@ def generate_emergency_fallback_plan(query: str, current_state: dict) -> dict:
             ]
         }
 
-    # 3. EKONOMİ & TARLA & KÖYLÜ
-    if any(k in q_lower for k in ["ekonomi", "kaynak", "gıda", "gida", "odun", "tarla", "çiftlik", "ciftlik", "köylü", "koylu", "işçi", "isci"]):
-        return {
-            "summary": "Ekonomik Büyüme Programı: Kaynak toplama hızını artırmak ve gıda üretimini güvenceye almak için köylü eğitimi ve tarla yatırımı yapılıyor.",
-            "confidence": 0.92,
-            "actions": [
-                {
-                    "action_type": "TRAIN_UNIT",
-                    "unit_type": "villager",
-                    "count": 2,
-                    "target_zone": "town_center",
-                    "reason": "Ekonomik işgücünü artırmak için köylü eğitimi."
-                },
-                {
-                    "action_type": "BUILD",
-                    "building_type": "farm",
-                    "target_zone": "town_center",
-                    "reason": "Düzenli gıda hasadı için Şehir Merkezi yanına tarla kurulumu."
-                },
-                {
-                    "action_type": "RESEARCH",
-                    "building_type": "Wheelbarrow",
-                    "target_zone": "town_center",
-                    "reason": "Köylülerin taşıma kapasitesini artıran El Arabası geliştirmesi."
-                }
-            ]
-        }
+    # 3. EKONOMİ & TARLA & KÖYLÜ & KAYNAK ANALİZİ (Canlı snapshot tabanlı)
+    if any(k in q_lower for k in ["analiz", "durum", "öneri", "oneri", "tavsiye", "odak", "ekonomi", "kaynak", "gıda", "gida", "odun", "tarla", "çiftlik", "ciftlik", "köylü", "koylu", "işçi", "isci", "rakip", "ne yap"]):
+        return build_dynamic_intel_plan(q_lower, current_state or {})
 
     # 4. ÇAĞ ATLAMA & TEKNOLOJİ & DEMİRCİ
     if any(k in q_lower for k in ["çağ", "cag", "feodal", "atla", "geliş", "gelis", "demirci", "teknoloji", "silah", "zırh", "zirh"]):
@@ -283,40 +259,165 @@ def generate_emergency_fallback_plan(query: str, current_state: dict) -> dict:
             ]
         }
 
-    # 9. DİNAMİK SAVUNMA
-    enemies = current_state.get("visible_enemies", [])
-    target_zone = "north_gate"
-    if enemies and isinstance(enemies, list) and len(enemies) > 0:
-        first_enemy = enemies[0]
-        if isinstance(first_enemy, dict):
-            target_zone = first_enemy.get("zone", "north_gate")
+    return build_dynamic_intel_plan(q_lower, current_state or {})
 
+
+def build_dynamic_intel_plan(q_lower: str, state: dict) -> dict:
+    """Canlı fog_intel, resources, workers ve population verilerine dayalı hilesiz analiz planı üretir."""
+    res = state.get("resources") or {}
+    wood = int(res.get("wood", 450))
+    food = int(res.get("food", 200))
+    gold = int(res.get("gold", 150))
+
+    w = state.get("workers") or {}
+    w_total = int(w.get("total", 3))
+    w_food = int(w.get("food", 0))
+    w_wood = int(w.get("wood", 0))
+    w_gold = int(w.get("gold", 0))
+    w_idle = int(w.get("idle", 0))
+
+    pop = state.get("population") or {}
+    pop_cur = int(pop.get("current", 4))
+    pop_max = int(pop.get("max", 10))
+
+    fog = state.get("fog_intel") or {}
+    explored_pct = int(fog.get("explored_percent", 0))
+    visible_enemies = state.get("visible_enemies") or []
+    last_known = fog.get("last_known_enemies") or []
+    enemy_blds = fog.get("discovered_enemy_buildings") or []
+    disc_gold = int(fog.get("discovered_gold_nodes", 1))
+
+    # 1. Odaklanılacak kaynağı belirle
+    scores = {
+        "food": (55 if food < 120 else (25 if food < 220 else 0)) + (45 if w_food == 0 and w_total > 0 else 0),
+        "wood": (50 if wood < 120 else (22 if wood < 200 else 0)) + (42 if w_wood == 0 and w_total > 0 else 0) + (35 if (pop_max - pop_cur) <= 2 and wood < 60 else 0),
+        "gold": (48 if gold < 90 else (20 if gold < 180 else 0)) + (36 if w_gold == 0 and w_total >= 2 else 0),
+    }
+    focus_key = max(scores, key=lambda k: scores[k])
+    focus_tr = {"food": "GIDA", "wood": "ODUN", "gold": "ALTIN"}[focus_key]
+
+    # 2. Sis içi rakip & karşıt birim analizi
+    cav_s, rng_s, inf_s = 0, 0, 0
+    threat_zone = "north_gate"
+    for grp in list(visible_enemies) + list(last_known):
+        if not isinstance(grp, dict):
+            continue
+        ut = str(grp.get("type", "")).lower()
+        cnt = int(grp.get("count", 0))
+        if cnt <= 0:
+            continue
+        threat_zone = grp.get("zone") or threat_zone
+        if ut in ("cavalry", "scout"):
+            cav_s += cnt
+        elif ut in ("archer", "crossbowman"):
+            rng_s += cnt
+        else:
+            inf_s += cnt
+
+    counter_unit = "spearman"
+    if cav_s >= rng_s and cav_s >= inf_s and cav_s > 0:
+        counter_unit = "spearman"
+    elif rng_s >= cav_s and rng_s >= inf_s and rng_s > 0:
+        counter_unit = "cavalry"
+    elif inf_s > 0:
+        counter_unit = "archer"
+    else:
+        for eb in enemy_blds:
+            bt = str((eb or {}).get("type", "")).lower()
+            if "archery" in bt:
+                counter_unit = "cavalry"
+                break
+            if "barracks" in bt or "blacksmith" in bt:
+                counter_unit = "archer"
+                break
+
+    enemy_note = (
+        f"Aktif görüşte {len(visible_enemies)} düşman grubu ({threat_zone})"
+        if visible_enemies
+        else (
+            f"Gri sis izinde {len(last_known)} grup / {len(enemy_blds)} düşman yapısı"
+            if (last_known or enemy_blds)
+            else f"Haritanın %{explored_pct}'i açık; rakip henüz sis altında"
+        )
+    )
+
+    actions = []
+    rem_wood, rem_food, rem_gold = wood, food, gold
+    rem_pop = max(0, pop_max - pop_cur)
+
+    if (pop_max - pop_cur) <= 2 and pop_max < 60 and rem_wood >= 30 and w_total > 0:
+        rem_wood -= 30
+        actions.append({
+            "action_type": "BUILD",
+            "building_type": "house",
+            "target_zone": "town_center",
+            "reason": f"Nüfus sınıra yakın ({pop_cur}/{pop_max}); yeni birlikler için Ev inşa et."
+        })
+
+    if focus_key == "gold" and disc_gold == 0:
+        actions.append({
+            "action_type": "SCOUT",
+            "unit_type": "soldier",
+            "count": 1,
+            "target_zone": "gold",
+            "reason": "Altın düşük ve henüz sis dışında altın madeni tespit edilmedi; altın keşfi yap."
+        })
+    elif w_total > 0:
+        reassign_cnt = w_idle if w_idle > 0 else (2 if w_total >= 4 else 1)
+        actions.append({
+            "action_type": "ASSIGN_GATHER",
+            "unit_type": "villager",
+            "count": min(20, reassign_cnt),
+            "target_zone": focus_key,
+            "reason": f"Kaynak odağı {focus_tr}; {reassign_cnt} köylüyü bu kaynağa yönlendir."
+        })
+
+    if w_total < 7 and rem_food >= 50 and rem_pop >= 1:
+        rem_food -= 50
+        rem_pop -= 1
+        actions.append({
+            "action_type": "TRAIN_UNIT",
+            "unit_type": "villager",
+            "count": 1,
+            "target_zone": "town_center",
+            "reason": f"Toplam işçi ({w_total}) artırmak için 1 yeni köylü eğit."
+        })
+
+    if explored_pct < 40 or (not visible_enemies and not last_known and not enemy_blds):
+        actions.append({
+            "action_type": "SCOUT",
+            "unit_type": "soldier",
+            "count": 1,
+            "target_zone": "unexplored",
+            "reason": f"Haritanın %{explored_pct}'i açık; rakibin yerleşimini görmek için sisli bölgeyi tara."
+        })
+
+    unit_costs = {
+        "spearman": (0, 60, 20),
+        "archer": (50, 0, 30),
+        "cavalry": (0, 100, 80),
+    }
+    cw, cf, cg = unit_costs.get(counter_unit, (0, 60, 20))
+    if rem_pop >= 1 and rem_wood >= cw and rem_food >= cf and rem_gold >= cg:
+        cnt = min(3, rem_pop, rem_wood // cw if cw else 3, rem_food // cf if cf else 3, rem_gold // cg if cg else 3)
+        if cnt >= 1:
+            actions.append({
+                "action_type": "TRAIN_UNIT",
+                "unit_type": counter_unit,
+                "count": cnt,
+                "target_zone": threat_zone,
+                "reason": f"Sis içi istihbarata karşı uygun savunma/karşıt birlik ({counter_unit}) eğitimi."
+            })
+
+    summary = (
+        f"Kaynaklar: {wood} Odun, {food} Gıda, {gold} Altın (Nüfus {pop_cur}/{pop_max}). "
+        f"İşçiler ({w_total}): {w_food} Gıda, {w_wood} Odun, {w_gold} Altın, {w_idle} Boşta -> "
+        f"ODAK: {focus_tr}. Sis: {enemy_note}."
+    )
     return {
-        "summary": f"Taktiksel Savunma Planı: {target_zone} bölgesindeki tehdide karşı mızrakçı hattı kuruluyor ve okçu desteği sağlanıyor.",
-        "confidence": 0.88,
-        "actions": [
-            {
-                "action_type": "TRAIN_UNIT",
-                "unit_type": "spearman",
-                "count": 4,
-                "target_zone": target_zone,
-                "reason": f"{target_zone} savunması için mızrakçı eğitimi."
-            },
-            {
-                "action_type": "MOVE_GROUP",
-                "unit_type": "spearman",
-                "count": 4,
-                "target_zone": target_zone,
-                "reason": f"Birlikleri {target_zone} mevzisine intikal ettir."
-            },
-            {
-                "action_type": "TRAIN_UNIT",
-                "unit_type": "archer",
-                "count": 2,
-                "target_zone": target_zone,
-                "reason": f"{target_zone} bölgesini arkadan ok atışlarıyla koruma."
-            }
-        ]
+        "summary": summary[:650],
+        "confidence": 0.93,
+        "actions": actions[:8]
     }
 
 class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):

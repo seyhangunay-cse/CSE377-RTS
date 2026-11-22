@@ -58,6 +58,11 @@ namespace CSE377.AI
                 case "EXPLORE":
                     string targetLabel = (target_zone == "gold") ? "Altın Madenleri" : "Sisli Bölgeler";
                     return $"[KEŞİF] {count}x Asker -> Hedef: {targetLabel} ({reason})";
+                case "ASSIGN_GATHER":
+                    string resTr = (!string.IsNullOrEmpty(target_zone) && target_zone.ToLower().Contains("wood")) ? "Odun (Orman)"
+                        : (!string.IsNullOrEmpty(target_zone) && target_zone.ToLower().Contains("gold")) ? "Altın Madeni"
+                        : "Gıda (Tarla/Çilek)";
+                    return $"[İŞÇİ ODAKLA] {count}x Köylü -> {resTr} ({reason})";
                 case "BUILD":
                     string bLabel = !string.IsNullOrEmpty(building_type) ? building_type : (!string.IsNullOrEmpty(unit_type) ? unit_type : "Bina");
                     return $"[İNŞA ET] {bLabel} -> Bölge: {target_zone} ({reason})";

@@ -618,48 +618,105 @@ namespace CSE377.Gameplay
         public AiSafeSnapshot GenerateLiveSnapshot()
         {
             var snapshot = new AiSafeSnapshot();
-            snapshot.team_id = (LocalPlayerTeam == UnitTeam.Enemy) ? "RED" : "BLUE";
+            UnitTeam myTeam = LocalPlayerTeam;
+            snapshot.team_id = (myTeam == UnitTeam.Enemy) ? "RED" : "BLUE";
             snapshot.match_id = (RTSNetworkSyncManager.Instance != null && RTSNetworkSyncManager.Instance.isMultiplayerMode)
                 ? RTSNetworkSyncManager.Instance.matchRoomId
                 : "live-rts-match";
             snapshot.resources = new AiSafeSnapshot.ResourceState(wood, food, gold);
+            snapshot.population = new AiSafeSnapshot.PopulationState
+            {
+                current = CalculateCurrentPopulation(myTeam),
+                max = CalculateMaxPopulation(myTeam)
+            };
 
-            // Sahadaki dost orduyu ve görüş alanındaki rakip birimleri say
+            // 1. Sahadaki dost ordu, işçi görev dağılımı ve aktif görüşteki rakip birimleri say
             var armyCounts = new Dictionary<string, int>();
-            var enemyCounts = new Dictionary<string, int>();
+            var enemyByTypeZone = new Dictionary<(string type, string zone), int>();
+            var workers = new AiSafeSnapshot.WorkerAllocationState();
 
             foreach (var u in RTSUnit.AllUnits)
             {
                 if (u == null || u.currentHp <= 0) continue;
 
-                string type = u.unitType.ToLower();
-                if (u.team == LocalPlayerTeam)
+                string type = (u.unitType ?? "spearman").ToLowerInvariant();
+                if (u.team == myTeam)
                 {
                     armyCounts[type] = armyCounts.getOrDefault(type, 0) + 1;
+                    if (type == "villager")
+                    {
+                        workers.total++;
+                        var v = u.GetComponent<RTSVillager>();
+                        if (v == null || v.currentState == VillagerState.Idle)
+                        {
+                            workers.idle++;
+                        }
+                        else if (v.currentState == VillagerState.Building || v.currentState == VillagerState.WalkingToBuild || v.currentState == VillagerState.Repairing || v.currentState == VillagerState.WalkingToRepair)
+                        {
+                            workers.building++;
+                        }
+                        else if (v.currentState == VillagerState.Harvesting || v.currentState == VillagerState.WalkingToResource || v.currentState == VillagerState.ReturningToTownCenter)
+                        {
+                            if (v.carryingType == RTSResourceType.Wood) workers.wood++;
+                            else if (v.carryingType == RTSResourceType.Gold) workers.gold++;
+                            else workers.food++;
+                        }
+                        else
+                        {
+                            workers.idle++;
+                        }
+                    }
                 }
                 else
                 {
                     // Savaş Sisi Filtresi (Hilesiz Anti-Cheat):
-                    // Yalnızca bu oyuncunun görüş alanına girmiş rakip birimler kendi AI Komutanına bildirilir!
+                    // Yalnızca bu oyuncunun görüş alanına girmiş rakip birimler bildirilir!
                     bool isVisible = (RTSFogOfWarManager.Instance != null)
                         ? RTSFogOfWarManager.Instance.IsUnitVisible(u)
                         : true;
 
                     if (isVisible)
                     {
-                        enemyCounts[type] = enemyCounts.getOrDefault(type, 0) + 1;
+                        string zone = RTSFogOfWarManager.GetLogicalZoneName(u.transform.position, myTeam);
+                        var key = (type, zone);
+                        enemyByTypeZone[key] = enemyByTypeZone.getOrDefault(key, 0) + 1;
                     }
                 }
             }
+
+            snapshot.workers = workers;
 
             foreach (var pair in armyCounts)
             {
                 snapshot.army.Add(new AiSafeSnapshot.UnitGroup(pair.Key, pair.Value));
             }
 
-            foreach (var pair in enemyCounts)
+            foreach (var pair in enemyByTypeZone)
             {
-                snapshot.visible_enemies.Add(new AiSafeSnapshot.EnemyGroup(pair.Key, pair.Value, "north_gate"));
+                snapshot.visible_enemies.Add(new AiSafeSnapshot.EnemyGroup(pair.Key.type, pair.Value, pair.Key.zone));
+            }
+
+            // 2. Tamamlanmış dost yapılar
+            var bldCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var b in RTSBuilding.AllBuildings)
+            {
+                if (b == null || b.currentHp <= 0 || !b.isConstructed || b.team != myTeam) continue;
+                string bKey = b.buildingType.ToString().ToLowerInvariant();
+                bldCounts[bKey] = bldCounts.getOrDefault(bKey, 0) + 1;
+            }
+            foreach (var pair in bldCounts)
+            {
+                snapshot.friendly_buildings.Add(new AiSafeSnapshot.UnitGroup(pair.Key, pair.Value));
+            }
+
+            // 3. Sis içi keşif yüzdeleri, keşfedilen kaynak düğümleri, düşman binaları ve son görülen izler
+            snapshot.fog_intel = new AiSafeSnapshot.FogIntelState();
+            snapshot.fog_intel.seconds_until_next_raid = (IsMultiplayerPvP || (RTSNetworkSyncManager.Instance != null && RTSNetworkSyncManager.Instance.isMultiplayerMode))
+                ? -1
+                : Mathf.RoundToInt(GetTimeUntilNextRaid());
+            if (RTSFogOfWarManager.Instance != null)
+            {
+                RTSFogOfWarManager.Instance.FillSnapshotFogIntel(snapshot.fog_intel, myTeam);
             }
 
             if (RTSTechManager.Instance != null)
@@ -677,10 +734,10 @@ namespace CSE377.Gameplay
                 snapshot.unlocked_tech.Add("Age_1");
             }
 
-            // Eğer görüş alanında düşman varsa saldırı alarmı ekle
-            if (enemyCounts.Count > 0)
+            // Eğer görüş alanında düşman varsa bölgeye göre saldırı alarmı ekle
+            if (snapshot.visible_enemies.Count > 0)
             {
-                snapshot.recent_events.Add(new AiSafeSnapshot.GameEventSnapshot("UNDER_ATTACK", "north_gate", 5));
+                snapshot.recent_events.Add(new AiSafeSnapshot.GameEventSnapshot("UNDER_ATTACK", snapshot.visible_enemies[0].zone, 5));
             }
 
             return snapshot;
@@ -737,6 +794,10 @@ namespace CSE377.Gameplay
                     case "SCOUT":
                     case "EXPLORE":
                         ExecuteScoutAction(action.unit_type, action.count, action.target_zone, execTeam);
+                        break;
+
+                    case "ASSIGN_GATHER":
+                        ExecuteAssignGatherAction(action.target_zone, action.count, execTeam);
                         break;
 
                     case "BUILD":
@@ -1085,6 +1146,104 @@ namespace CSE377.Gameplay
                 else
                 {
                     hudController?.SetAiStatus("[UYARI] Keşfe göndermek için canlı askeri birliğiniz bulunmuyor!", Color.yellow);
+                }
+            }
+        }
+
+        private void ExecuteAssignGatherAction(string resourceFocus, int count, UnitTeam execTeam)
+        {
+            string key = string.IsNullOrEmpty(resourceFocus) ? "food" : resourceFocus.ToLowerInvariant().Trim();
+            RTSResourceType targetType = RTSResourceType.Food;
+            string resTr = "Gıda";
+            if (key.Contains("wood") || key.Contains("odun"))
+            {
+                targetType = RTSResourceType.Wood;
+                resTr = "Odun";
+            }
+            else if (key.Contains("gold") || key.Contains("altin") || key.Contains("altın"))
+            {
+                targetType = RTSResourceType.Gold;
+                resTr = "Altın";
+            }
+
+            Vector3 homePos = (execTeam == UnitTeam.Enemy) ? RTSAutoBootstrap.CurrentEnemyBasePos : RTSAutoBootstrap.CurrentPlayerBasePos;
+
+            // En yakın keşfedilmiş ve tükenmemiş hedef kaynağı bul (yerel oyuncu için sise uyumlu)
+            RTSResourceSource bestSource = null;
+            float bestDist = float.MaxValue;
+            foreach (var src in RTSResourceSource.AllSources)
+            {
+                if (src == null || src.remainingAmount <= 0 || src.resourceType != targetType) continue;
+                if (execTeam == LocalPlayerTeam && RTSFogOfWarManager.Instance != null)
+                {
+                    if (RTSFogOfWarManager.Instance.GetCellStateAtWorldPos(src.transform.position) == FogCellState.Unexplored)
+                        continue;
+                }
+                float d = (src.transform.position - homePos).sqrMagnitude;
+                if (d < bestDist)
+                {
+                    bestDist = d;
+                    bestSource = src;
+                }
+            }
+
+            if (bestSource == null)
+            {
+                if (execTeam == LocalPlayerTeam)
+                {
+                    hudController?.SetAiStatus($"⚠️ Sis dışında keşfedilmiş {resTr} kaynağı yok! Önce keşif (SCOUT) yapın.", Color.yellow);
+                }
+                return;
+            }
+
+            int requested = Mathf.Max(1, count);
+            var candidates = new List<RTSVillager>();
+            var fallbackOtherGatherers = new List<RTSVillager>();
+
+            foreach (var u in RTSUnit.AllUnits)
+            {
+                if (u == null || u.team != execTeam || u.currentHp <= 0) continue;
+                if (!string.Equals(u.unitType, "villager", StringComparison.OrdinalIgnoreCase)) continue;
+                var v = u.GetComponent<RTSVillager>();
+                if (v == null) continue;
+
+                if (v.currentState == VillagerState.Idle)
+                {
+                    candidates.Add(v);
+                }
+                else if (v.currentState != VillagerState.Building && v.currentState != VillagerState.WalkingToBuild
+                    && v.currentState != VillagerState.Repairing && v.currentState != VillagerState.WalkingToRepair)
+                {
+                    // Zaten istenen kaynakta değilse yedek aday olarak al
+                    if (v.carryingType != targetType || v.currentResource == null)
+                    {
+                        fallbackOtherGatherers.Add(v);
+                    }
+                }
+            }
+
+            int assigned = 0;
+            for (int i = 0; i < candidates.Count && assigned < requested; i++)
+            {
+                candidates[i].AssignHarvestTask(bestSource);
+                assigned++;
+            }
+            for (int i = 0; i < fallbackOtherGatherers.Count && assigned < requested; i++)
+            {
+                fallbackOtherGatherers[i].AssignHarvestTask(bestSource);
+                assigned++;
+            }
+
+            if (execTeam == LocalPlayerTeam)
+            {
+                if (assigned > 0)
+                {
+                    hudController?.SetAiStatus($"[İŞÇİ ODAKLAMA] {assigned} köylü {resTr} kaynağına yönlendirildi!", Color.green);
+                    RTSAudioManager.Instance?.PlaySound(RTSSoundType.MoveOrder);
+                }
+                else
+                {
+                    hudController?.SetAiStatus($"⚠️ {resTr} kaynağına kaydırılacak uygun köylü bulunamadı.", Color.yellow);
                 }
             }
         }

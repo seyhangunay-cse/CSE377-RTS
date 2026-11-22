@@ -93,6 +93,28 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "get_fog_intelligence",
+            "description": "Savaş sisi kapsamını, sis dışında keşfedilmiş düşman binalarını, son görülen düşman birlik izlerini ve keşfedilmiş kaynak yataklarını döner.",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_worker_and_economy_report",
+            "description": "Kaynak stokları, köylülerin (işçilerin) gıda/odun/altın/boşta dağılımı, nüfus kapasitesi ve odaklanılması gereken öncelikli kaynak analizini döner.",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "estimate_plan_cost",
             "description": "Belirli sayıda birim üretmenin kaynak maliyetini ve oyuncunun mevcut bütçesiyle bunu karşılayıp karşılayamayacağını döner.",
             "parameters": {
@@ -140,56 +162,54 @@ TOOL_MAP = {
     "get_army_status": server.get_army_status,
     "get_visible_enemies": server.get_visible_enemies,
     "get_technology_status": server.get_technology_status,
+    "get_fog_intelligence": server.get_fog_intelligence,
+    "get_worker_and_economy_report": server.get_worker_and_economy_report,
     "estimate_plan_cost": server.estimate_plan_cost,
     "search_game_knowledge": server.search_game_knowledge
 }
 
-SYSTEM_PROMPT = """Sen Age of Empires tarzı bir RTS Strateji Komutanısın.
-Görevin oyuncunun sorusunu ve savaş durumunu incelemek, eksik bilgileri MCP araçlarını kullanarak dinamik olarak sorgulamak ve kurallara uygun yapılandırılmış bir Stratejik Eylem Planı (ActionPlan) üretmektir.
+SYSTEM_PROMPT = """Sen Age of Empires tarzı bir RTS Strateji ve Ekonomi Komutanısın.
+Görevin oyuncunun sorusunu, sisli bölge istihbaratını, kaynak stoklarını ve işçi dağılımını MCP araçlarıyla sorgulamak; rakibi analiz etmek, odaklanılması gereken kaynağı/işçi ayarını net söylemek ve action_plan.schema.json kurallarına uygun bir ActionPlan üretmektir.
 
 TEMEL DOKTRİN VE ÇALIŞMA ADIMLARI:
-1. Durumu Anla: Eksik bilgi varsa (görünür düşmanlar, eldeki kaynaklar, mevcut ordu, kurallar) kafandan varsayım yapma; ilgili araçları sırasıyla çağır:
-   - Düşman tehdidini görmek için: get_visible_enemies
-   - Tehdide karşı en doğru birimi ve kuralları öğrenmek için: search_game_knowledge (örneğin: 'süvari karşıtı birim' veya 'kapı savunması')
+1. Durumu Anla: Eksik bilgi varsa kafandan varsayım yapma; ilgili araçları çağır:
+   - Savaş sisi ve sis içi rakip/yapı izleri için: get_fog_intelligence
+   - Aktif düşman tehdidi için: get_visible_enemies
+   - Kaynaklar, köylü işçi dağılımı ve odaklanılacak kaynak için: get_worker_and_economy_report
    - Mevcut ordumuzu görmek için: get_army_status
-   - Kaynaklarımızı görmek için: get_player_resources
-   - Yeni birim üreteceksen bütçeyi doğrulamak için: estimate_plan_cost
+   - Birim üreteceksen bütçeyi doğrulamak için: estimate_plan_cost
+   - Karşıtlık/kural sorusu varsa: search_game_knowledge
 2. Karşıtlık Sistemi (Counters):
    - Süvarilere karşı Mızrakçı (Spearman) en etkilidir.
    - Mızrakçılara karşı Okçu (Archer) en etkilidir.
    - Okçulara karşı Süvari (Cavalry) en etkilidir.
-3. Kaynak Kontrolü: Oyuncunun bütçesini aşan (affordable: false) birim üretim emri planlama.
-4. Çıktı Formatı: Tüm araç sonuçlarını değerlendirdikten sonra vereceğin nihai cevabın SADECE ve SADECE aşağıdaki JSON şemasına uyması ZORUNLUDUR:
+3. Özet ve İşçi Odağı: summary alanında mevcut kaynak durumunu, işçi dağılımını, odaklanılması gereken kaynağı ('food', 'wood' veya 'gold') ve sis içi rakip analizini kısaca özetle.
+4. Kaynak Kontrolü: Oyuncunun bütçesini aşan (affordable: false) birim üretim emri planlama.
+5. Çıktı Formatı: Vereceğin nihai cevabın SADECE aşağıdaki JSON şemasına uyması ZORUNLUDUR:
 {
-  "summary": "Stratejinin kısa ve net özeti (maksimum 400 karakter)",
-  "confidence": 0.85,
+  "summary": "Kaynak/işçi odağı ve sis içi rakip analiz özeti (maksimum 650 karakter)",
+  "confidence": 0.90,
   "actions": [
     {
-      "action_type": "TRAIN_UNIT",
-      "unit_type": "spearman",
-      "count": 3,
-      "target_zone": "north_gate",
-      "reason": "Kuzey kapısına yaklaşan süvarilere karşı mızrakçılar bonus hasar verir."
-    },
-    {
-      "action_type": "MOVE_GROUP",
-      "unit_type": "spearman",
-      "count": 4,
-      "target_zone": "north_gate",
-      "reason": "Mevcut mızrakçıları savunma boğazına yönlendir."
+      "action_type": "ASSIGN_GATHER",
+      "unit_type": "villager",
+      "count": 2,
+      "target_zone": "food",
+      "reason": "Gıda stoğu kritik ve gıdada yeterli işçi yok; 2 köylüyü gıdaya odakla."
     }
   ]
 }
 
 ÖNEMLİ KISITLAR:
-- 'action_type' yalnızca şunlardan biri olabilir: 'TRAIN_UNIT', 'BUILD', 'MOVE_GROUP', 'RESEARCH', 'SCOUT', 'ATTACK'.
-- 'ATTACK' eylemi için 'unit_type' alanına 'soldier', 'target_zone' alanına 'north_gate' veya 'enemy_camp' yaz.
+- 'action_type' yalnızca şunlardan biri olabilir: 'TRAIN_UNIT', 'BUILD', 'MOVE_GROUP', 'RESEARCH', 'SCOUT', 'ATTACK', 'ASSIGN_GATHER'.
+- 'ASSIGN_GATHER' eyleminde 'unit_type' 'villager', 'target_zone' ise yalnızca 'food', 'wood' veya 'gold' olmalıdır.
+- 'ATTACK' eylemi için 'unit_type' alanına 'soldier', 'target_zone' alanına 'north_gate' veya 'enemy_base' yaz.
 - 'TRAIN_UNIT' eylemi için 'unit_type' alanına 'spearman', 'archer', 'cavalry', 'villager' yaz.
-- 'RESEARCH' eylemi için 'building_type' alanına araştırılacak teknolojinin adını yaz (örn: 'Wheelbarrow', 'Iron_Weapons', 'Scale_Armor', 'Fletching').
-- 'BUILD' eylemi için 'building_type' alanına inşa edilecek binayı yaz (örn: 'barracks', 'tower', 'blacksmith', 'house').
+- 'RESEARCH' eylemi için 'building_type' alanına teknoloji adını yaz (örn: 'Wheelbarrow', 'Iron_Weapons', 'Scale_Armor', 'Fletching').
+- 'BUILD' eylemi için 'building_type' alanına inşa edilecek binayı yaz (örn: 'barracks', 'tower', 'blacksmith', 'house', 'farm').
 - 'SCOUT' eylemi için 'target_zone' alanına 'gold' veya 'unexplored' yaz.
 - 'count' 1 ile 20 arasında bir tamsayı olmalıdır.
-- JSON nesnesi dışında hiçbir karşılama, önsöz, selamlama veya markdown açıklaması ekleme!
+- JSON nesnesi dışında hiçbir karşılama, önsöz veya markdown açıklaması ekleme!
 """
 
 def parse_actions_from_markdown(text: str) -> Optional[Dict[str, Any]]:
@@ -261,13 +281,13 @@ def sanitize_json_text(text: str) -> str:
 
 def normalize_action_plan(data: Dict[str, Any], default_summary: str = "Stratejik Komutan Eylem Planı") -> Dict[str, Any]:
     """Planı action_plan.schema.json gereksinimlerine göre temizler ve fazlalıkları ayıklar."""
-    valid_action_types = {"TRAIN_UNIT", "BUILD", "MOVE_GROUP", "RESEARCH", "SCOUT", "EXPLORE", "ATTACK", "ATTACK_MOVE"}
+    valid_action_types = {"TRAIN_UNIT", "BUILD", "MOVE_GROUP", "RESEARCH", "SCOUT", "EXPLORE", "ATTACK", "ATTACK_MOVE", "ASSIGN_GATHER"}
 
     cleaned_plan: Dict[str, Any] = {}
     summary = data.get("summary")
     if not summary or not isinstance(summary, str) or len(summary.strip()) < 5:
         summary = default_summary
-    cleaned_plan["summary"] = summary[:400]
+    cleaned_plan["summary"] = summary[:650]
 
     confidence = data.get("confidence")
     try:
@@ -287,7 +307,8 @@ def normalize_action_plan(data: Dict[str, Any], default_summary: str = "Strateji
         cleaned_act: Dict[str, Any] = {}
         act_type = str(act.get("action_type", "")).upper()
         if act_type not in valid_action_types:
-            if "TRAIN" in act_type: act_type = "TRAIN_UNIT"
+            if "GATHER" in act_type or "ASSIGN" in act_type: act_type = "ASSIGN_GATHER"
+            elif "TRAIN" in act_type: act_type = "TRAIN_UNIT"
             elif "MOVE" in act_type: act_type = "MOVE_GROUP"
             elif "ATTACK" in act_type: act_type = "ATTACK"
             elif "SCOUT" in act_type: act_type = "SCOUT"
@@ -299,7 +320,7 @@ def normalize_action_plan(data: Dict[str, Any], default_summary: str = "Strateji
         reason = str(act.get("reason", "")).strip()
         if not reason:
             reason = f"{cleaned_act['action_type']} emri icra ediliyor."
-        cleaned_act["reason"] = reason[:250]
+        cleaned_act["reason"] = reason[:320]
 
         if "unit_type" in act and act["unit_type"]:
             cleaned_act["unit_type"] = str(act["unit_type"]).lower()
@@ -400,7 +421,8 @@ def run_agent(user_query: str, max_steps: int = 6) -> Dict[str, Any]:
 
     # 1. Hızlı Taarruz ve Kuşatma Tespiti (Attack / Kuşatma / Hücum / Karargah)
     q_lower = user_query.lower()
-    if any(k in q_lower for k in ["saldır", "saldir", "taarruz", "hücum", "hucum", "kuşat", "kusat", "yok et", "öldür", "oldur", "vur", "kaleye", "karargah"]):
+    is_analysis_query = any(k in q_lower for k in ["analiz", "öneri", "oneri", "tavsiye", "durum", "odak", "ne yap", "rakip", "dağıt", "dagit"])
+    if not is_analysis_query and any(k in q_lower for k in ["saldır", "saldir", "taarruz", "hücum", "hucum", "kuşat", "kusat", "yok et", "öldür", "oldur", "vur", "kaleye", "karargah"]):
         target_zone = "enemy_base" if any(k in q_lower for k in ["karargah", "kale", "üs", "us", "kamp", "camp", "bina"]) else "north_gate"
         plan = {
             "summary": f"{cmd_tag} Taktiksel Kuşatma ve Taarruz Emri: Mevcut ordumuz {target_zone} bölgesindeki düşman hedeflerine genel taarruza geçiriliyor.",
@@ -419,7 +441,7 @@ def run_agent(user_query: str, max_steps: int = 6) -> Dict[str, Any]:
         return plan
 
     # 2. Hızlı Taktiksel Keşif ve Savaş Sisi Taraması
-    if any(k in q_lower for k in ["keşf", "kesf", "keşif", "kesif", "scout", "gez", "altın", "altin", "harita", "dolaş", "dolas", "çevreyi gez", "haritayı aç"]):
+    if not is_analysis_query and any(k in q_lower for k in ["keşf", "kesf", "keşif", "kesif", "scout", "gez", "altın", "altin", "harita", "dolaş", "dolas", "çevreyi gez", "haritayı aç"]):
         focus = "gold" if any(k in q_lower for k in ["altın", "altin"]) else "unexplored"
         unit_type = "soldier"
         count = 1
@@ -445,7 +467,7 @@ def run_agent(user_query: str, max_steps: int = 6) -> Dict[str, Any]:
         return plan
 
     # Hızlı Ev İnşası Tespiti (House / Nüfus)
-    if any(k in q_lower for k in ["ev yap", "ev inşa", "ev insha", "house", "nüfus için", "nufus icin", "ev kur", "nüfus", "nufus"]):
+    if not is_analysis_query and any(k in q_lower for k in ["ev yap", "ev inşa", "ev insha", "house", "nüfus için", "nufus icin", "ev kur", "nüfus", "nufus"]):
         plan = {
             "summary": "Taktiksel Nüfus Planı: Nüfus tavanını +5 artırmak amacıyla üssümüzde 1 adet Ev (House) inşa ediliyor.",
             "confidence": 0.95,
@@ -464,7 +486,7 @@ def run_agent(user_query: str, max_steps: int = 6) -> Dict[str, Any]:
         return plan
 
     # Hızlı Köylü Üretimi Tespiti (Villager)
-    if any(k in q_lower for k in ["köylü üret", "koylu uret", "köylü bas", "koylu bas", "işçi üret", "isci uret", "köylü çıkar", "koylu cikar", "köylü", "koylu"]):
+    if not is_analysis_query and any(k in q_lower for k in ["köylü üret", "koylu uret", "köylü bas", "koylu bas", "işçi üret", "isci uret", "köylü çıkar", "koylu cikar", "köylü", "koylu"]):
         count = 1
         m_count = re.search(r'(\d+)\s*(?:köylü|koylu|işçi|isci)', q_lower)
         if m_count:

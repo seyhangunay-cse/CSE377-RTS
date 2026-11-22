@@ -148,10 +148,14 @@ namespace CSE377.AI
                     // Prefab atanmamışsa dinamik basit Text UI oluştur
                     GameObject itemGo = new GameObject("ActionItem", typeof(RectTransform), typeof(Text));
                     itemGo.transform.SetParent(actionsListContainer, false);
+                    var rt = itemGo.GetComponent<RectTransform>();
+                    rt.sizeDelta = new Vector2(0, 34);
                     var t = itemGo.GetComponent<Text>();
                     t.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-                    t.fontSize = 14;
+                    t.fontSize = 13;
                     t.color = Color.white;
+                    t.horizontalOverflow = HorizontalWrapMode.Wrap;
+                    t.verticalOverflow = VerticalWrapMode.Overflow;
                     t.text = $"• {action}";
                 }
             }

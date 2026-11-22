@@ -78,6 +78,8 @@ namespace CSE377.Gameplay
         }
 
         [Header("AI Komutanı Butonları")]
+        public Button analyzeBattlefieldBtn;
+        public Text aiLiveIntelText;
         public Button defendNorthGateBtn;
         public Button economyPlanBtn;
         public Button counterAttackBtn;
@@ -242,6 +244,9 @@ namespace CSE377.Gameplay
 
         private void Start()
         {
+            if (analyzeBattlefieldBtn != null)
+                analyzeBattlefieldBtn.onClick.AddListener(() => RequestPlanFromAI("Sisli bölgedeki rakip durumunu, elimizdeki kaynakları ve işçilerimizi analiz et; hangi kaynağa odaklanmamız gerektiğini söyle ve eylem planı öner."));
+
             if (defendNorthGateBtn != null)
                 defendNorthGateBtn.onClick.AddListener(() => RequestPlanFromAI("Kuzey kapısından atlılar yaklaşıyor. Durumumuzu kontrol et ve savunma için ne yapmam gerektiğini planla."));
 
@@ -308,6 +313,10 @@ namespace CSE377.Gameplay
                     if (aiCommanderPanel != null)
                     {
                         aiCommanderPanel.SetActive(!aiCommanderPanel.activeSelf);
+                        if (aiCommanderPanel.activeSelf)
+                        {
+                            UpdateAiLiveIntelPreview(force: true);
+                        }
                     }
                 });
             }
@@ -1243,6 +1252,22 @@ namespace CSE377.Gameplay
             UpdateInspectorCard();
             UpdateIdleVillagerNotification();
             UpdateVillagerActivityTracker();
+            UpdateAiLiveIntelPreview();
+        }
+
+        private float nextAiIntelPreviewTime = 0f;
+
+        private void UpdateAiLiveIntelPreview(bool force = false)
+        {
+            if (aiLiveIntelText == null || aiCommanderPanel == null || !aiCommanderPanel.activeSelf) return;
+            if (!force && Time.unscaledTime < nextAiIntelPreviewTime) return;
+            nextAiIntelPreviewTime = Time.unscaledTime + 0.8f;
+
+            if (gameManager == null) gameManager = RTSGameManager.Instance;
+            if (gameManager != null)
+            {
+                aiLiveIntelText.text = RTSAiAdvisor.BuildCompactHudIntelLine(gameManager.GenerateLiveSnapshot());
+            }
         }
 
         private void UpdateRaidCountdown()
