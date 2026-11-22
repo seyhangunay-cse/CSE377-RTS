@@ -1,15 +1,17 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace CSE377.AI
 {
     /// <summary>
-    /// Hilesiz (Fog-of-War uyumlu) Stratejik İstihbarat, Ekonomi/İşçi Dengesi ve Öneri Motoru.
-    /// Yalnızca oyuncunun aktif görüşündeki ve sis hafızasında keşfettiği bilgilere göre:
-    /// 1. Sisli bölge içi düşman hareketlerini ve binalarını analiz eder.
-    /// 2. Kaynak stokları, işçi dağılımı ve nüfusa göre odaklanılması gereken kaynağı ve aksiyonları önerir.
-    /// 3. Bütçe ve nüfus limitlerini aşmayacak uygulanabilir ActionPlan üretir.
+    /// Hilesiz (Fog-of-War uyumlu) Akıllı Prompt Anlama, Stratejik İstihbarat, Ekonomi/İşçi Dengesi ve Öneri Motoru.
+    /// Kullanıcının serbest Türkçe/İngilizce komut ve sorularını bağlamına göre analiz eder:
+    /// 1. Karşıtlık (Counter) sorularını (örn: "Okçulara karşı ne basayım?") kendi üretim emriyle karıştırmadan yanıtlar.
+    /// 2. Çağ/Teknoloji/Bina gereksinimleri ile eksik kaynak farklarını net hesaplar.
+    /// 3. Akın hazırlığı, sis içi düşman izleri ve kaynak/işçi odak tavsiyelerini dinamik bütçeyle birleştirir.
+    /// 4. Çoklu birim/bina/yön/adet komutlarını (örn: "Batı kanadına 3 okçu ve 2 mızrakçı gönder") ayrıştırır.
     /// </summary>
     public static class RTSAiAdvisor
     {
@@ -21,8 +23,8 @@ namespace CSE377.AI
             public int rememberedEnemyUnits;
             public int discoveredEnemyBuildings;
             public string primaryThreatZone;
-            public string dominantEnemyClass;   // "cavalry", "ranged", "infantry", "siege", "unknown"
-            public string recommendedCounter;   // "spearman", "cavalry", "archer", "trebuchet", "scout"
+            public string dominantEnemyClass;   // "cavalry", "ranged", "infantry", "siege", "fortified", "unknown"
+            public string recommendedCounter;   // "spearman", "cavalry", "archer", "trebuchet"
             public string narrativeTr;
         }
 
@@ -36,6 +38,27 @@ namespace CSE377.AI
             public bool shouldTrainVillager;
             public bool needsGoldScout;
             public string narrativeTr;
+        }
+
+        public static string NormalizeTr(string input)
+        {
+            if (string.IsNullOrEmpty(input)) return "";
+            var sb = new StringBuilder(input.Length);
+            for (int i = 0; i < input.Length; i++)
+            {
+                char c = input[i];
+                switch (c)
+                {
+                    case 'Ç': case 'ç': sb.Append('c'); break;
+                    case 'Ğ': case 'ğ': sb.Append('g'); break;
+                    case 'İ': case 'I': case 'ı': sb.Append('i'); break;
+                    case 'Ö': case 'ö': sb.Append('o'); break;
+                    case 'Ş': case 'ş': sb.Append('s'); break;
+                    case 'Ü': case 'ü': sb.Append('u'); break;
+                    default: sb.Append(char.ToLowerInvariant(c)); break;
+                }
+            }
+            return sb.ToString().Trim();
         }
 
         public static string TranslateZoneTr(string zone)
@@ -84,7 +107,7 @@ namespace CSE377.AI
                     return "Kuşatma Atölyesi";
                 case "farm": return "Tarla";
                 case "house": return "Ev";
-                case "market": return "Pazar";
+                case "market": return "Pazar Yeri";
                 default: return bType;
             }
         }
@@ -99,10 +122,33 @@ namespace CSE377.AI
                 case "crossbowman": return "Arbaletçi";
                 case "cavalry": return "Ağır Süvari";
                 case "scout": return "Keşif Atlısı";
-                case "swordsman": return "Kılıçlı";
+                case "swordsman": return "Kılıçlı Piyade";
                 case "trebuchet": return "Mancınık";
                 case "villager": return "Köylü";
                 default: return uType;
+            }
+        }
+
+        private static string TranslateResourceTr(string resKey)
+        {
+            switch ((resKey ?? "").ToLowerInvariant())
+            {
+                case "wood": return "ODUN";
+                case "gold": return "ALTIN";
+                default: return "GIDA";
+            }
+        }
+
+        private static string TranslateEnemyClassTr(string cls)
+        {
+            switch ((cls ?? "").ToLowerInvariant())
+            {
+                case "cavalry": return "Süvari/Atlı";
+                case "ranged": return "Menzilli (Okçu)";
+                case "infantry": return "Piyade";
+                case "siege": return "Kuşatma/Mancınık";
+                case "fortified": return "Kule/Tahkimat";
+                default: return "Bilinmeyen";
             }
         }
 
@@ -114,9 +160,7 @@ namespace CSE377.AI
             {
                 var g = snap.army[i];
                 if (g != null && string.Equals(g.type, unitType, StringComparison.OrdinalIgnoreCase))
-                {
                     total += g.count;
-                }
             }
             return total;
         }
@@ -129,9 +173,7 @@ namespace CSE377.AI
             {
                 var g = snap.army[i];
                 if (g != null && !string.Equals(g.type, "villager", StringComparison.OrdinalIgnoreCase))
-                {
                     total += g.count;
-                }
             }
             return total;
         }
@@ -144,11 +186,16 @@ namespace CSE377.AI
             {
                 var b = snap.friendly_buildings[i];
                 if (b != null && string.Equals(b.type, buildingType, StringComparison.OrdinalIgnoreCase))
-                {
                     total += b.count;
-                }
             }
             return total;
+        }
+
+        public static int GetAgeLevel(AiSafeSnapshot snap)
+        {
+            if (HasTech(snap, "Age_3") || HasTech(snap, "Castle_Age")) return 3;
+            if (HasTech(snap, "Age_2") || HasTech(snap, "Feudal_Age")) return 2;
+            return 1;
         }
 
         public static EnemyIntelAnalysis AnalyzeEnemyIntel(AiSafeSnapshot snap)
@@ -167,10 +214,7 @@ namespace CSE377.AI
                 return res;
             }
 
-            int cavScore = 0;
-            int rangedScore = 0;
-            int infScore = 0;
-            int siegeScore = 0;
+            int cavScore = 0, rangedScore = 0, infScore = 0, siegeScore = 0;
             var zoneDanger = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             var seenParts = new List<string>();
             var memoryParts = new List<string>();
@@ -202,11 +246,7 @@ namespace CSE377.AI
             }
 
             var enemyBuildingHints = new List<string>();
-            bool enemyHasArchery = false;
-            bool enemyHasBarracks = false;
-            bool enemyHasBlacksmith = false;
-            bool enemyHasCastleOrTower = false;
-            bool enemyHasSiege = false;
+            bool enemyHasArchery = false, enemyHasBarracks = false, enemyHasBlacksmith = false, enemyHasCastleOrTower = false, enemyHasSiege = false;
 
             if (fog != null && fog.discovered_enemy_buildings != null)
             {
@@ -222,15 +262,12 @@ namespace CSE377.AI
                     if (bt.Contains("tower") || bt.Contains("castle")) enemyHasCastleOrTower = true;
                     if (bt.Contains("siege")) enemyHasSiege = true;
 
-                    if (!zoneDanger.ContainsKey(eb.zone ?? "enemy_base"))
-                    {
-                        zoneDanger[eb.zone ?? "enemy_base"] = 0;
-                    }
-                    zoneDanger[eb.zone ?? "enemy_base"] += eb.count;
+                    string z = string.IsNullOrEmpty(eb.zone) ? "enemy_base" : eb.zone;
+                    if (!zoneDanger.ContainsKey(z)) zoneDanger[z] = 0;
+                    zoneDanger[z] += eb.count;
                 }
             }
 
-            // En yoğun tehdit bölgesi
             int bestZoneScore = -1;
             foreach (var kv in zoneDanger)
             {
@@ -241,7 +278,6 @@ namespace CSE377.AI
                 }
             }
 
-            // Rakip ağırlıklı sınıf ve karşıt birim belirleme
             if (siegeScore > 0 && siegeScore >= cavScore)
             {
                 res.dominantEnemyClass = "siege";
@@ -281,13 +317,9 @@ namespace CSE377.AI
             int exploredPct = (fog != null) ? fog.explored_percent : 0;
             var sb = new StringBuilder();
             if (res.hasLiveSighting)
-            {
                 sb.Append($"Aktif görüşte rakip: {string.Join(", ", seenParts)}. ");
-            }
             if (res.hasFogMemory)
-            {
                 sb.Append($"Gri sis izi: {string.Join(", ", memoryParts)}. ");
-            }
             if (enemyBuildingHints.Count > 0)
             {
                 sb.Append($"Sis dışı düşman yapıları: {string.Join(", ", enemyBuildingHints)}");
@@ -301,9 +333,7 @@ namespace CSE377.AI
             {
                 sb.Append($"Haritanın %{exploredPct}'i açıldı; sis içinde henüz düşman birliği veya yapısı tespit edilmedi. ");
                 if (fog != null && fog.seconds_until_next_raid >= 0)
-                {
-                    sb.Append($"İlk/sonraki akına ~{fog.seconds_until_next_raid}sn var; öncü keşif şart.");
-                }
+                    sb.Append($"Akına ~{fog.seconds_until_next_raid}sn var; öncü keşif önerilir.");
             }
             else
             {
@@ -356,10 +386,7 @@ namespace CSE377.AI
             int discoveredGold = (fog != null) ? fog.discovered_gold_nodes : 1;
             int discoveredWood = (fog != null) ? fog.discovered_wood_nodes : 1;
 
-            // Eksik ve darboğaz puanı hesapla (yüksek skor = acil odaklanılması gereken kaynak)
-            float foodNeedScore = 0f;
-            float woodNeedScore = 0f;
-            float goldNeedScore = 0f;
+            float foodNeedScore = 0f, woodNeedScore = 0f, goldNeedScore = 0f;
 
             if (res.food < 120) foodNeedScore += 55f;
             else if (res.food < 220) foodNeedScore += 25f;
@@ -377,11 +404,8 @@ namespace CSE377.AI
             if (w.gold == 0 && w.total >= 2) goldNeedScore += 36f;
             else if (w.gold <= 1 && w.total >= 4) goldNeedScore += 15f;
 
-            // Altın en az keşfedildiyse köylü yönlendirmek yerine altın keşfi uyarısı
             if (discoveredGold == 0 && goldNeedScore >= 30f)
-            {
                 eco.needsGoldScout = true;
-            }
 
             if (foodNeedScore >= woodNeedScore && foodNeedScore >= goldNeedScore)
             {
@@ -402,20 +426,13 @@ namespace CSE377.AI
                 eco.secondaryResource = (foodNeedScore >= woodNeedScore) ? "food" : "wood";
             }
 
-            // İşçi kaydırma sayısı: boşta işçi varsa öncelik onlara; yoksa dengesiz yığılmadan çek
             int workersOnFocus = (eco.focusResource == "wood") ? w.wood : (eco.focusResource == "gold") ? w.gold : w.food;
             if (w.idle > 0)
-            {
                 eco.recommendedReassignCount = w.idle;
-            }
             else if (workersOnFocus == 0 && w.total >= 2)
-            {
                 eco.recommendedReassignCount = (w.total >= 4) ? 2 : 1;
-            }
             else if (workersOnFocus <= 1 && w.total >= 5)
-            {
                 eco.recommendedReassignCount = 1;
-            }
 
             string reasonFocus = (eco.focusResource == "food")
                 ? (w.food == 0 ? "Gıda'da hiç işçi yok" : "Köylü/piyade ve Çağ için Gıda kritik")
@@ -455,7 +472,7 @@ namespace CSE377.AI
         {
             if (snapshot == null) snapshot = AiSafeSnapshot.CreateMockSnapshot();
 
-            string q = (userPrompt ?? "").ToLowerInvariant().Trim();
+            string q = NormalizeTr(userPrompt);
             bool isRedTeam = snapshot.team_id == "RED";
             string cmdPrefix = isRedTeam ? "[KIRMIZI AI KOMUTAN] " : "[MAVİ AI KOMUTAN] ";
 
@@ -470,439 +487,855 @@ namespace CSE377.AI
             int remGold = res.gold;
             int remPop = Math.Max(0, pop.max - pop.current);
 
-            bool asksFullAnalysis = string.IsNullOrEmpty(q)
-                || q.Contains("analiz") || q.Contains("durum") || q.Contains("öneri") || q.Contains("oneri")
-                || q.Contains("tavsiye") || q.Contains("odak") || q.Contains("ne yap") || q.Contains("rakip")
-                || q.Contains("işçi") || q.Contains("isci") || q.Contains("dağıt") || q.Contains("dagit");
+            string requestedZone = DetectTargetZone(q, enemy.primaryThreatZone);
+            bool isQuestion = ContainsAny(q, "?", "nasil", "neden", "ne yap", "ne bas", "ne uret", "ne kur", "ne kadar", "kac ", "ne zaman", "hangisi", "hangi ", "miyim", "miyim", "mi ", "mi?", "mu ", "mu?", "var mi", "yeter mi", "eksik");
+            bool asksCounterCue = ContainsAny(q, "karsi", "durdur", "yener", "iyi gider", "counter", "savun");
+            bool asksAttackCmd = ContainsAny(q, "kusat", "saldir", "taarruz", "hucum", "yok et", "oldur", "yik", "vur") && !asksCounterCue;
 
-            // 1. KAPSAMLI SİS + RAKİP + KAYNAK + İŞÇİ ANALİZİ VE ODAK ÖNERİSİ
-            if (asksFullAnalysis && !q.Contains("kuşat") && !q.Contains("kusat") && !q.Contains("saldır") && !q.Contains("saldir"))
+            // 1. KARŞITLIK / COUNTER SORULARI ("okçulara karşı ne basayım?", "atlıları nasıl durdururum?", "mancınığa ne iyi gelir?")
+            if (asksCounterCue && TryDetectCounteredEnemy(q, out string enemyUnitMentioned, out string bestCounterUnit, out string counterReasonTr))
             {
-                var plan = new RTSActionPlan();
-                plan.confidence = 0.95f;
-                plan.summary = TrimSummary($"{cmdPrefix}{eco.narrativeTr} | SİS İSTİHBARATI: {enemy.narrativeTr}");
-
-                // Adım 1: Nüfus dolmaya yakınsa Ev (30 Odun)
-                if (eco.needsHouseSoon && remWood >= 30 && w.total > 0)
-                {
-                    remWood -= 30;
-                    plan.actions.Add(new RTSAction
-                    {
-                        action_type = "BUILD",
-                        building_type = "house",
-                        target_zone = "town_center",
-                        reason = $"Nüfus limitine yaklaşıldı ({pop.current}/{pop.max}); yeni birlikler için +5 kapasiteli Ev kur."
-                    });
-                }
-
-                // Adım 2: İşçileri odaklanılacak kaynağa yönlendir (veya altın madeni yoksa önce keşfet)
-                if (eco.needsGoldScout && eco.focusResource == "gold" && GetMilitaryTotal(snapshot) > 0)
-                {
-                    plan.actions.Add(new RTSAction
-                    {
-                        action_type = "SCOUT",
-                        unit_type = "soldier",
-                        count = 1,
-                        target_zone = "gold",
-                        reason = "Altın stoğu düşük ve henüz keşfedilmemiş altın madenleri var; 1 gözcüyü altın keşfine çıkar."
-                    });
-                }
-                else if (eco.recommendedReassignCount > 0 && w.total > 0)
-                {
-                    plan.actions.Add(new RTSAction
-                    {
-                        action_type = "ASSIGN_GATHER",
-                        unit_type = "villager",
-                        count = eco.recommendedReassignCount,
-                        target_zone = eco.focusResource,
-                        reason = $"{eco.focusResourceTr} üretimine odaklanmak için {eco.recommendedReassignCount} köylüyü bu kaynağa yönlendir."
-                    });
-                }
-
-                // Adım 3: Ekonomi küçükse ve bütçe uygunsa köylü ekle
-                if (eco.shouldTrainVillager && remFood >= 50 && remPop >= 1)
-                {
-                    remFood -= 50;
-                    remPop -= 1;
-                    plan.actions.Add(new RTSAction
-                    {
-                        action_type = "TRAIN_UNIT",
-                        unit_type = "villager",
-                        count = 1,
-                        target_zone = "town_center",
-                        reason = $"Toplam işçi sayısı az ({w.total}); ekonomiyi hızlandırmak için 1 yeni köylü eğit."
-                    });
-                }
-
-                // Adım 4: Sisli bölge açıksa/kapalıysa gözcü veya karşıt birlik üret
-                bool mapMostlyFoggy = snapshot.fog_intel == null || snapshot.fog_intel.explored_percent < 40 || (!enemy.hasLiveSighting && !enemy.hasFogMemory && enemy.discoveredEnemyBuildings == 0);
-                if (mapMostlyFoggy && GetMilitaryTotal(snapshot) > 0)
-                {
-                    plan.actions.Add(new RTSAction
-                    {
-                        action_type = "SCOUT",
-                        unit_type = "soldier",
-                        count = 1,
-                        target_zone = "unexplored",
-                        reason = $"Haritanın %{(snapshot.fog_intel != null ? snapshot.fog_intel.explored_percent : 0)}'i açık; rakip yerleşimini ve birikimini sis arkasında tespit et."
-                    });
-                }
-
-                TryAddAffordableCounterUnit(plan, enemy.recommendedCounter, enemy.primaryThreatZone, ref remWood, ref remFood, ref remGold, ref remPop,
-                    enemy.hasLiveSighting || enemy.hasFogMemory || enemy.discoveredEnemyBuildings > 0
-                        ? $"Sis istihbaratına ({TranslateEnemyClassTr(enemy.dominantEnemyClass)}) karşı en etkili karşıt birim."
-                        : "Erken akınlara karşı savunma çekirdeği oluştur.");
-
-                // En az 1 somut aksiyon garantisi
-                if (plan.actions.Count == 0 && GetMilitaryTotal(snapshot) > 0)
-                {
-                    plan.actions.Add(new RTSAction
-                    {
-                        action_type = "SCOUT",
-                        unit_type = "soldier",
-                        count = 1,
-                        target_zone = "unexplored",
-                        reason = "Mevcut kaynaklar sınırlı olduğundan sisli bölgelerde ücretsiz keşif icra et."
-                    });
-                }
-                else if (plan.actions.Count == 0 && w.total > 0)
-                {
-                    plan.actions.Add(new RTSAction
-                    {
-                        action_type = "ASSIGN_GATHER",
-                        unit_type = "villager",
-                        count = 1,
-                        target_zone = eco.focusResource,
-                        reason = $"Bütçeyi toparlamak için köylüleri {eco.focusResourceTr} kaynağına odakla."
-                    });
-                }
-
-                return plan;
+                return BuildCounterAnswerPlan(cmdPrefix, snapshot, enemyUnitMentioned, bestCounterUnit, counterReasonTr, requestedZone, eco, ref remWood, ref remFood, ref remGold, ref remPop);
             }
 
-            // 2. KUŞATMA & KARARGAH YIKIMI
-            if (q.Contains("kuşat") || q.Contains("kusat") || q.Contains("karargah") || q.Contains("üs") || q.Contains("üssü") || q.Contains("yık") || q.Contains("kale"))
+            // 2. AKIN / BASKIN HAZIRLIK & ZAMANLAMA SORULARI ("akına kaç saniye var", "hazır mıyız?", "saldırı ne zaman?")
+            if (ContainsAny(q, "akin", "baskin", "dalga", "saldiri ne zaman", "hazir mi", "guvende mi"))
             {
-                var plan = new RTSActionPlan();
-                plan.confidence = 0.94f;
-                string zoneNote = enemy.discoveredEnemyBuildings > 0
-                    ? $"Tespit edilen {enemy.discoveredEnemyBuildings} düşman yapısı üzerine taarruz başlatılıyor."
-                    : "Kuzey düşman karargahı hattına keşifli kuşatma başlatılıyor.";
-                plan.summary = TrimSummary($"{cmdPrefix}Kuşatma Doktrini: {zoneNote} ({eco.focusResourceTr} kaynağına odaklanmanız önerilir).");
+                return BuildRaidReadinessPlan(cmdPrefix, snapshot, eco, enemy, requestedZone, ref remWood, ref remFood, ref remGold, ref remPop);
+            }
 
-                TryAddAffordableUnit(plan, "spearman", 3, "north_gate", ref remWood, ref remFood, ref remGold, ref remPop,
-                    "Kuşatma hattında öncü piyade desteği.");
+            // 3. ÇAĞ ATLAMA & TEKNOLOJİ & EKSİK HESABI ("çağ atlamak için ne eksik?", "feodal", "demirci", "el arabası")
+            if (ContainsAny(q, "cag", "feodal", "kale cagi", "demirci", "teknoloji", "arastir", "el arabasi", "demir silah", "pul zirh", "fletching", "ok ucu", "balistik"))
+            {
+                return BuildAgeAndTechPlan(cmdPrefix, q, snapshot, eco, ref remWood, ref remFood, ref remGold, ref remPop);
+            }
 
+            // 4. BİLGİ / KARŞILAŞTIRMA / MALİYET / STRATEJİ REHBERİ ("mızrakçı mı okçu mu", "maliyetleri ne", "nasıl kazanırım")
+            if (ContainsAny(q, "maliyet", "kac altin", "kac odun", "kac gida", "ne ister", "fiyat", "daha iyi", "daha guclu", "mi daha", "hangisi", "farki", "en guclu", "nasil kazan", "tavsiye et", "ozetle", "ne ise yarar", " vs "))
+            {
+                return BuildKnowledgeComparisonPlan(cmdPrefix, q, snapshot, eco, enemy, ref remWood, ref remFood, ref remGold, ref remPop);
+            }
+
+            // 5. BELİRLİ KAYNAK DARBOĞAZI / NÜFUS / İŞÇİ SORUNU ("altınım yok", "neden üretemiyorum", "odun az", "işçileri nereye vereyim")
+            if (ContainsAny(q, "altin yok", "altinim yok", "altin az", "altin yetm", "odun yok", "odunum yok", "odun az", "odun yetm",
+                "gida yok", "gidam yok", "gida az", "gida yetm", "yiyecek yok", "uretemiyorum", "basamiyorum", "yapamiyorum",
+                "nufus dol", "nufus yetm", "bosta koylu", "bosta isci", "isci dagit", "nereye ver", "odaklanmaliyim", "hangi kaynak"))
+            {
+                return BuildBottleneckDiagnosisPlan(cmdPrefix, q, snapshot, eco, enemy, ref remWood, ref remFood, ref remGold, ref remPop);
+            }
+
+            // 6. KUŞATMA & TAARRUZ EMİRLERİ
+            if (asksAttackCmd)
+            {
+                var plan = new RTSActionPlan { confidence = 0.94f };
+                bool toBase = ContainsAny(q, "karargah", "us", "kale", "merkez", "camp");
+                string atkZone = toBase ? "enemy_base" : requestedZone;
+                int mil = GetMilitaryTotal(snapshot);
+                int reqCount = ExtractCountNearKeywords(q, new[] { "asker", "ordu", "birlik", "mizrakci", "okcu", "suvari", "mancinik", "kilicli" }, 10);
+
+                if (mil == 0)
+                {
+                    plan.summary = TrimSummary($"{cmdPrefix}Dikkat: Şu anda sahada hiç muharip askerimiz yok, önce ordu kurmalıyız! {eco.narrativeTr}");
+                    TryAddAffordableCounterUnit(plan, enemy.recommendedCounter, atkZone, ref remWood, ref remFood, ref remGold, ref remPop,
+                        "Taarruz öncesi acil ilk muharip birlik eğitimi.");
+                    if (plan.actions.Count == 0 && w.total > 0)
+                    {
+                        plan.actions.Add(new RTSAction { action_type = "ASSIGN_GATHER", unit_type = "villager", count = Math.Max(1, w.idle > 0 ? w.idle : 2), target_zone = "food", reason = "İlk askerleri basabilmek için gıda üretimine odaklan." });
+                    }
+                    return plan;
+                }
+
+                plan.summary = TrimSummary($"{cmdPrefix}Taarruz Emri ({TranslateZoneTr(atkZone)} • {mil} muharip hazır): {enemy.narrativeTr}");
                 plan.actions.Add(new RTSAction
                 {
                     action_type = "ATTACK",
                     unit_type = "soldier",
-                    count = 10,
-                    target_zone = "enemy_base",
-                    reason = "Düşman ana kalesini ve karargahını doğrudan kuşatıp imha et."
-                });
-                return plan;
-            }
-
-            // 3. TAARRUZ / KARŞI SALDIRI
-            if (q.Contains("saldır") || q.Contains("saldir") || q.Contains("taarruz") || q.Contains("hücum") || q.Contains("hucum") || q.Contains("karşı") || q.Contains("karsi") || q.Contains("yok et") || q.Contains("vur"))
-            {
-                var plan = new RTSActionPlan();
-                plan.confidence = 0.92f;
-                string atkZone = enemy.hasLiveSighting || enemy.hasFogMemory ? enemy.primaryThreatZone : "north_gate";
-                plan.summary = TrimSummary($"{cmdPrefix}Karşı Taarruz ({TranslateZoneTr(atkZone)}): {enemy.narrativeTr}");
-
-                plan.actions.Add(new RTSAction
-                {
-                    action_type = "ATTACK",
-                    unit_type = "soldier",
-                    count = 8,
+                    count = Math.Min(20, Math.Max(mil, reqCount)),
                     target_zone = atkZone,
                     reason = $"{TranslateZoneTr(atkZone)} bölgesindeki düşman hedeflerine taarruz et."
                 });
-
                 TryAddAffordableCounterUnit(plan, enemy.recommendedCounter, atkZone, ref remWood, ref remFood, ref remGold, ref remPop,
-                    $"Taarruzda rakip sınıfına ({TranslateEnemyClassTr(enemy.dominantEnemyClass)}) karşı destek takviyesi.");
-
+                    $"Taarruz hattına {TranslateEnemyClassTr(enemy.dominantEnemyClass)} tehdidine karşı destek eğitimi.");
                 return plan;
             }
 
-            // 4. EKONOMİ / TARLA / KAYNAK / KÖYLÜ
-            if (q.Contains("ekonomi") || q.Contains("kaynak") || q.Contains("gıda") || q.Contains("gida") || q.Contains("odun") || q.Contains("tarla") || q.Contains("çiftlik") || q.Contains("ciftlik") || q.Contains("köylü") || q.Contains("koylu"))
+            // 7. KEŞİF / SİS AÇMA / ALTIN MADENİ BULMA EMİRLERİ
+            if (ContainsAny(q, "kesif", "kesfet", "scout", "harita", "dolas", "sis", "maden") && !ContainsAny(q, "analiz", "durum", "rapor", "oner"))
             {
-                var plan = new RTSActionPlan();
-                plan.confidence = 0.92f;
-                plan.summary = TrimSummary($"{cmdPrefix}Ekonomi & İşçi Planı: {eco.narrativeTr}");
-
-                if (w.total > 0)
-                {
-                    int moveWorkers = Math.Max(1, eco.recommendedReassignCount);
-                    plan.actions.Add(new RTSAction
-                    {
-                        action_type = "ASSIGN_GATHER",
-                        unit_type = "villager",
-                        count = moveWorkers,
-                        target_zone = eco.focusResource,
-                        reason = $"Ekonomideki öncelikli açık: {eco.focusResourceTr}. {moveWorkers} köylüyü buraya odakla."
-                    });
-                }
-
-                TryAddAffordableUnit(plan, "villager", 2, "town_center", ref remWood, ref remFood, ref remGold, ref remPop,
-                    "Kaynak toplama hızını artırmak için bütçenin yettiği kadar yeni köylü eğit.");
-
-                if (remWood >= 60 && w.total > 0)
-                {
-                    remWood -= 60;
-                    plan.actions.Add(new RTSAction
-                    {
-                        action_type = "BUILD",
-                        building_type = "farm",
-                        target_zone = "town_center",
-                        reason = "Kesintisiz gıda üretimi için Şehir Merkezi yanına Tarla inşa et."
-                    });
-                }
-
-                if (remWood >= 50 && remFood >= 175 && !HasTech(snapshot, "Wheelbarrow"))
-                {
-                    remWood -= 50;
-                    remFood -= 175;
-                    plan.actions.Add(new RTSAction
-                    {
-                        action_type = "RESEARCH",
-                        building_type = "Wheelbarrow",
-                        target_zone = "town_center",
-                        reason = "Köylü taşıma kapasitesini ve toplama hızını %25 artıran El Arabası teknolojisi."
-                    });
-                }
-
-                return plan;
-            }
-
-            // 5. ÇAĞ ATLAMA & TEKNOLOJİ
-            if (q.Contains("çağ") || q.Contains("cag") || q.Contains("feodal") || q.Contains("atla") || q.Contains("geliş") || q.Contains("gelis") || q.Contains("demirci") || q.Contains("teknoloji") || q.Contains("silah") || q.Contains("zırh") || q.Contains("zirh"))
-            {
-                var plan = new RTSActionPlan();
-                plan.confidence = 0.90f;
-                plan.summary = TrimSummary($"{cmdPrefix}Teknoloji & Çağ Planı: {eco.narrativeTr}");
-
-                if (GetBuildingCount(snapshot, "blacksmith") == 0 && remWood >= 150)
-                {
-                    remWood -= 150;
-                    plan.actions.Add(new RTSAction
-                    {
-                        action_type = "BUILD",
-                        building_type = "blacksmith",
-                        target_zone = "town_center",
-                        reason = "Silah ve zırh araştırmalarını açmak için Demirci Atölyesi inşası."
-                    });
-                }
-
-                if (remFood >= 100 && remGold >= 50 && !HasTech(snapshot, "Iron_Weapons"))
-                {
-                    remFood -= 100;
-                    remGold -= 50;
-                    plan.actions.Add(new RTSAction
-                    {
-                        action_type = "RESEARCH",
-                        building_type = "Iron_Weapons",
-                        target_zone = "town_center",
-                        reason = "Yakın dövüş birliklerinin saldırı gücünü artıran Demir Silahlar geliştirmesi."
-                    });
-                }
-
-                if (plan.actions.Count == 0 && w.total > 0)
-                {
-                    string neededRes = (remFood < 200) ? "food" : (remWood < 150) ? "wood" : "gold";
-                    plan.actions.Add(new RTSAction
-                    {
-                        action_type = "ASSIGN_GATHER",
-                        unit_type = "villager",
-                        count = Math.Max(1, w.idle > 0 ? w.idle : 2),
-                        target_zone = neededRes,
-                        reason = $"Demirci/Çağ atlama maliyetini toplamak için köylüleri {(neededRes == "food" ? "Gıda" : neededRes == "wood" ? "Odun" : "Altın")} kaynağına odakla."
-                    });
-                }
-
-                return plan;
-            }
-
-            // 6. TAHKİMAT & KULE & SUR
-            if (q.Contains("kule") || q.Contains("sur") || q.Contains("duvar") || q.Contains("tahkim") || q.Contains("kapı") || q.Contains("kapi"))
-            {
-                var plan = new RTSActionPlan();
-                plan.confidence = 0.91f;
-                string zone = enemy.hasLiveSighting || enemy.hasFogMemory ? enemy.primaryThreatZone : "north_gate";
-                plan.summary = TrimSummary($"{cmdPrefix}Savunma Tahkimatı ({TranslateZoneTr(zone)}): {eco.narrativeTr}");
-
-                if (remWood >= 125 && remGold >= 50)
-                {
-                    remWood -= 125;
-                    remGold -= 50;
-                    plan.actions.Add(new RTSAction
-                    {
-                        action_type = "BUILD",
-                        building_type = "tower",
-                        target_zone = zone,
-                        reason = $"{TranslateZoneTr(zone)} hattına otomatik ok atan Savunma Kulesi inşası."
-                    });
-                }
-                else if (w.total > 0)
-                {
-                    plan.actions.Add(new RTSAction
-                    {
-                        action_type = "ASSIGN_GATHER",
-                        unit_type = "villager",
-                        count = 2,
-                        target_zone = (remWood < 125) ? "wood" : "gold",
-                        reason = "Savunma Kulesi (125 Odun, 50 Altın) için eksik kaynağı hızla topla."
-                    });
-                }
-
-                TryAddAffordableUnit(plan, "archer", 2, zone, ref remWood, ref remFood, ref remGold, ref remPop,
-                    "Kule çevresinde menzilli savunma desteği.");
-                return plan;
-            }
-
-            // 7. KEŞİF / HARİTA / SİS / ALTIN
-            if (q.Contains("keşif") || q.Contains("kesif") || q.Contains("scout") || q.Contains("harita") || q.Contains("sis") || q.Contains("altın") || q.Contains("altin") || q.Contains("maden"))
-            {
-                string focus = (q.Contains("altın") || q.Contains("altin") || q.Contains("maden") || eco.needsGoldScout) ? "gold" : "unexplored";
-                string focusTr = focus == "gold" ? "sis altındaki altın madenlerini" : "haritadaki sisli karanlık bölgeleri";
-
-                var plan = new RTSActionPlan();
-                plan.confidence = 0.95f;
+                string focus = ContainsAny(q, "altin", "maden") ? "gold" : "unexplored";
+                string focusTr = (focus == "gold") ? "keşfedilmemiş altın yataklarını" : "sis altındaki karanlık bölgeleri";
+                int reqCount = ExtractCountNearKeywords(q, new[] { "asker", "gozcu", "scout", "atli", "birlik" }, 1);
+                var plan = new RTSActionPlan { confidence = 0.95f };
                 plan.summary = TrimSummary($"{cmdPrefix}Sis Keşif Raporu: {enemy.narrativeTr} Öncü birlik {focusTr} açıyor.");
 
+                if (GetMilitaryTotal(snapshot) > 0)
+                {
+                    plan.actions.Add(new RTSAction
+                    {
+                        action_type = "SCOUT",
+                        unit_type = "soldier",
+                        count = Math.Min(GetMilitaryTotal(snapshot), reqCount),
+                        target_zone = focus,
+                        reason = $"Sisli bölgeyi açıp {focusTr} ve rakip yerleşimini tespit et."
+                    });
+                }
+                else
+                {
+                    TryAddAffordableUnit(plan, "spearman", 1, requestedZone, ref remWood, ref remFood, ref remGold, ref remPop,
+                        "Keşif çıkaracak askerimiz kalmadığı için 1 öncü birim üret.");
+                }
+                return plan;
+            }
+
+            // 8. AÇIK ÇOKLU VEYA TEKİL BİNA / BİRLİK / SEVK EMİRLERİ
+            // Örn: "3 okçu ve 2 mızrakçı üret", "batı kanadına 4 okçu gönder", "okçu poligonu ve tarla yap", "mancınık bas"
+            bool asksBuildVerb = ContainsAny(q, "yap", "insa", "kur", "dik", "ekle");
+            bool asksMoveVerb = ContainsAny(q, "gonder", "yolla", "cek", "tasi", "yerlestir", "tut");
+            bool asksTrainVerb = ContainsAny(q, "bas", "uret", "egit", "cikar", "yetistir", "hazirla");
+            bool asksAnalysisOrAdvice = isQuestion || ContainsAny(q, "analiz", "durum", "oneri", "tavsiye", "odak", "rakip", "rapor");
+
+            var mentionedBuildings = DetectMentionedBuildings(q);
+            var mentionedUnits = DetectMentionedUnits(q);
+
+            if (!asksAnalysisOrAdvice && (mentionedBuildings.Count > 0 || mentionedUnits.Count > 0 || asksBuildVerb || asksMoveVerb || asksTrainVerb))
+            {
+                return BuildCustomCommandPlan(cmdPrefix, q, snapshot, eco, enemy, requestedZone,
+                    mentionedBuildings, mentionedUnits, asksBuildVerb, asksMoveVerb, asksTrainVerb,
+                    ref remWood, ref remFood, ref remGold, ref remPop);
+            }
+
+            // 9. EKONOMİ / KAYNAK / İŞÇİ ODAK PLANI
+            if (ContainsAny(q, "ekonomi", "kaynak", "tarla", "ciftlik", "koylu", "isci") && !ContainsAny(q, "rakip", "sis"))
+            {
+                return BuildEconomyFocusPlan(cmdPrefix, snapshot, eco, ref remWood, ref remFood, ref remGold, ref remPop);
+            }
+
+            // 10. GENEL KAPSAMLI ANALİZ + ÖNERİ (Varsayılan akıllı komutan cevabı)
+            return BuildFullBattlefieldAnalysisPlan(cmdPrefix, snapshot, eco, enemy, requestedZone, ref remWood, ref remFood, ref remGold, ref remPop);
+        }
+
+        private static RTSActionPlan BuildCounterAnswerPlan(
+            string cmdPrefix, AiSafeSnapshot snapshot,
+            string enemyUnit, string counterUnit, string reasonTr, string zone, EconomyAnalysis eco,
+            ref int remWood, ref int remFood, ref int remGold, ref int remPop)
+        {
+            var plan = new RTSActionPlan { confidence = 0.96f };
+            string enemyTr = TranslateUnitTr(enemyUnit);
+            string counterTr = TranslateUnitTr(counterUnit);
+            int age = GetAgeLevel(snapshot);
+            int ownedCounter = GetArmyCount(snapshot, counterUnit);
+
+            var sb = new StringBuilder();
+            sb.Append($"{cmdPrefix}[KARŞITLIK YANITI] {enemyTr} tehdidine karşı en etkili birlik {counterTr}'dir ({reasonTr}). ");
+
+            // Çağ kısıtı kontrolü: Cavalry / Trebuchet Kale Çağı (Age 3), Archer / Swordsman Feodal (Age 2) gerektirir (ancak Ai/Test veya kale varsa esnet)
+            bool needsHigherAge = (counterUnit == "cavalry" || counterUnit == "trebuchet") && age < 3;
+            if (needsHigherAge)
+            {
+                sb.Append($"Not: {counterTr} Kale Çağı (3. Çağ) birliğidir (şu an {age}. Çağdasınız); acil ara çözüm olarak mevcut ordunun konumlanması ve ");
+            }
+
+            if (ownedCounter > 0)
+            {
+                sb.Append($"Elinizde {ownedCounter} {counterTr} hazır — {TranslateZoneTr(zone)} hattına sevk ediyoruz.");
+                plan.actions.Add(new RTSAction
+                {
+                    action_type = "MOVE_GROUP",
+                    unit_type = counterUnit,
+                    count = Math.Min(10, ownedCounter),
+                    target_zone = zone,
+                    reason = $"Mevcut {counterTr} birliklerini {enemyTr} tehdidine karşı {TranslateZoneTr(zone)} bölgesine yerleştir."
+                });
+            }
+
+            bool trainedPrimary = false;
+            if (!needsHigherAge)
+            {
+                trainedPrimary = TryAddAffordableUnit(plan, counterUnit, 3, zone, ref remWood, ref remFood, ref remGold, ref remPop,
+                    $"{enemyTr} saldırısını kırmak için bütçeye uygun {counterTr} eğitimi.");
+            }
+            else
+            {
+                // Yaş 1/2 iken okçu veya kılıçlı/mızrakçı alternatifi üret
+                string alt = (counterUnit == "cavalry") ? "spearman" : "archer";
+                if (TryAddAffordableUnit(plan, alt, 3, zone, ref remWood, ref remFood, ref remGold, ref remPop,
+                    $"{counterTr} açılana kadar {enemyTr} karşısında ön hat tutacak {TranslateUnitTr(alt)} eğitimi."))
+                {
+                    sb.Append($"{TranslateUnitTr(alt)} takviyesi + Kale Çağı hedefi önerilir.");
+                }
+            }
+
+            if (!trainedPrimary && ownedCounter == 0 && !needsHigherAge)
+            {
+                var c = GetCost(counterUnit);
+                string missing = DescribeMissingResources(c.wood, c.food, c.gold, remWood, remFood, remGold);
+                sb.Append($"Ancak bütçe/nüfus yetmiyor ({missing}). İşçileri {eco.focusResourceTr} kaynağına odaklıyoruz.");
+                if (snapshot.workers != null && snapshot.workers.total > 0)
+                {
+                    string targetRes = (remGold < c.gold) ? "gold" : (remWood < c.wood) ? "wood" : "food";
+                    plan.actions.Add(new RTSAction
+                    {
+                        action_type = "ASSIGN_GATHER",
+                        unit_type = "villager",
+                        count = Math.Max(1, snapshot.workers.idle > 0 ? snapshot.workers.idle : 2),
+                        target_zone = targetRes,
+                        reason = $"{counterTr} basabilmek için eksik {TranslateResourceTr(targetRes)} kaynağını topla."
+                    });
+                }
+            }
+
+            plan.summary = TrimSummary(sb.ToString());
+            return plan;
+        }
+
+        private static RTSActionPlan BuildRaidReadinessPlan(
+            string cmdPrefix, AiSafeSnapshot snapshot, EconomyAnalysis eco, EnemyIntelAnalysis enemy, string zone,
+            ref int remWood, ref int remFood, ref int remGold, ref int remPop)
+        {
+            var plan = new RTSActionPlan { confidence = 0.94f };
+            int raidSec = snapshot.fog_intel != null ? snapshot.fog_intel.seconds_until_next_raid : -1;
+            int mil = GetMilitaryTotal(snapshot);
+            int towers = GetBuildingCount(snapshot, "defensetower");
+
+            string raidStr = (raidSec >= 0) ? $"Akına ~{raidSec} saniye kaldı" : "Çok oyunculu PvP haritası aktif";
+            string readiness = (mil >= 8 || (mil >= 5 && towers >= 1))
+                ? "İYİ (Savunma çekirdeği mevcut)"
+                : (mil >= 3 ? "ORTA (Ek asker veya Kule gerek)" : "KRİTİK (Çok az askerimiz var!)");
+
+            plan.summary = TrimSummary($"{cmdPrefix}[AKIN HAZIRLIK ANALİZİ] {raidStr}. Ordumuz: {mil} muharip, {towers} Savunma Kulesi → Durum: {readiness}. {eco.narrativeTr}");
+
+            if (towers == 0 && remWood >= 125 && remGold >= 50)
+            {
+                remWood -= 125; remGold -= 50;
+                plan.actions.Add(new RTSAction
+                {
+                    action_type = "BUILD",
+                    building_type = "tower",
+                    target_zone = zone,
+                    reason = $"Yaklaşan akını karşılamak için {TranslateZoneTr(zone)} hattına Savunma Kulesi dik."
+                });
+            }
+            TryAddAffordableCounterUnit(plan, enemy.recommendedCounter, zone, ref remWood, ref remFood, ref remGold, ref remPop,
+                "Akın gelmeden savunma birliklerini güçlendir.");
+
+            if (mil > 0)
+            {
+                plan.actions.Add(new RTSAction
+                {
+                    action_type = "MOVE_GROUP",
+                    unit_type = "soldier",
+                    count = mil,
+                    target_zone = zone,
+                    reason = $"Mevcut {mil} askeri akın güzergahı olan {TranslateZoneTr(zone)} önüne mevzilendir."
+                });
+            }
+            return plan;
+        }
+
+        private static RTSActionPlan BuildAgeAndTechPlan(
+            string cmdPrefix, string q, AiSafeSnapshot snapshot, EconomyAnalysis eco,
+            ref int remWood, ref int remFood, ref int remGold, ref int remPop)
+        {
+            var plan = new RTSActionPlan { confidence = 0.93f };
+            int age = GetAgeLevel(snapshot);
+            bool hasBlacksmith = GetBuildingCount(snapshot, "blacksmith") > 0;
+            bool wantsCastle = ContainsAny(q, "kale cagi", "3. cag", "ucuncu cag", "balistik");
+
+            var sb = new StringBuilder();
+            sb.Append($"{cmdPrefix}[ÇAĞ & TEKNOLOJİ RAPORU] Şu an {age}. Çağdasınız. ");
+
+            if (age == 1 && !wantsCastle)
+            {
+                // II. Feodal Çağ: 200 Odun, 500 Gıda
+                if (remWood >= 200 && remFood >= 500)
+                {
+                    remWood -= 200; remFood -= 500;
+                    sb.Append("II. Feodal Çağ (200 Odun, 500 Gıda) için kaynaklar TAMAM! Hemen çağ atlıyoruz.");
+                    plan.actions.Add(new RTSAction
+                    {
+                        action_type = "RESEARCH",
+                        building_type = "Feudal_Age",
+                        target_zone = "town_center",
+                        reason = "II. Feodal Çağ'a yükselerek Okçu, Kılıçlı ve Savunma Kulesi kilidini aç."
+                    });
+                }
+                else
+                {
+                    string miss = DescribeMissingResources(200, 500, 0, remWood, remFood, remGold);
+                    sb.Append($"II. Feodal Çağ (200 Odun, 500 Gıda) için {miss} eksik. ");
+                    string focusNeed = (500 - remFood > (200 - remWood) * 2) ? "food" : "wood";
+                    sb.Append($"İşçileri {TranslateResourceTr(focusNeed)} kaynağına yönlendirin.");
+                    if (snapshot.workers != null && snapshot.workers.total > 0)
+                    {
+                        plan.actions.Add(new RTSAction
+                        {
+                            action_type = "ASSIGN_GATHER",
+                            unit_type = "villager",
+                            count = Math.Max(1, snapshot.workers.idle > 0 ? snapshot.workers.idle : 2),
+                            target_zone = focusNeed,
+                            reason = $"Feodal Çağ eksik kaynağını ({miss}) toplamak için köylü odaklaması."
+                        });
+                    }
+                    if (!hasBlacksmith && remWood >= 150)
+                    {
+                        remWood -= 150;
+                        plan.actions.Add(new RTSAction
+                        {
+                            action_type = "BUILD",
+                            building_type = "blacksmith",
+                            target_zone = "town_center",
+                            reason = "Feodal Çağ sonrası silah/zırh araştırmalarını açmak için Demirci kur."
+                        });
+                    }
+                }
+                plan.summary = TrimSummary(sb.ToString());
+                return plan;
+            }
+
+            if (age == 2 && wantsCastle)
+            {
+                if (remFood >= 800 && remGold >= 200)
+                {
+                    remFood -= 800; remGold -= 200;
+                    sb.Append("III. Kale Çağı (800 Gıda, 200 Altın) bütçesi hazır! Yükseliyoruz.");
+                    plan.actions.Add(new RTSAction { action_type = "RESEARCH", building_type = "Castle_Age", target_zone = "town_center", reason = "Ağır Süvari ve Mancınık birimleri için III. Kale Çağı'na geç." });
+                }
+                else
+                {
+                    string miss = DescribeMissingResources(0, 800, 200, remWood, remFood, remGold);
+                    sb.Append($"III. Kale Çağı (800 Gıda, 200 Altın) için {miss} eksik.");
+                    string focusNeed = (800 - remFood >= (200 - remGold) * 2) ? "food" : "gold";
+                    if (snapshot.workers != null && snapshot.workers.total > 0)
+                        plan.actions.Add(new RTSAction { action_type = "ASSIGN_GATHER", unit_type = "villager", count = Math.Max(1, snapshot.workers.idle > 0 ? snapshot.workers.idle : 2), target_zone = focusNeed, reason = $"Kale Çağı için {miss} eksiğini kapat." });
+                }
+                plan.summary = TrimSummary(sb.ToString());
+                return plan;
+            }
+
+            // Demirci ve mevcut teknolojiler
+            if (!hasBlacksmith && remWood >= 150)
+            {
+                remWood -= 150;
+                plan.actions.Add(new RTSAction { action_type = "BUILD", building_type = "blacksmith", target_zone = "town_center", reason = "Silah ve Zırh araştırmaları için Demirci Atölyesi inşası." });
+            }
+            if (!HasTech(snapshot, "Iron_Weapons") && remFood >= 100 && remGold >= 50)
+            {
+                remFood -= 100; remGold -= 50;
+                plan.actions.Add(new RTSAction { action_type = "RESEARCH", building_type = "Iron_Weapons", target_zone = "town_center", reason = "Piyade ve süvari saldırısını +2 artır." });
+            }
+            if (!HasTech(snapshot, "Scale_Armor") && remFood >= 100 && remGold >= 80)
+            {
+                remFood -= 100; remGold -= 80;
+                plan.actions.Add(new RTSAction { action_type = "RESEARCH", building_type = "Scale_Armor", target_zone = "town_center", reason = "Zırh +2 ve Can +20 artır." });
+            }
+            if (!HasTech(snapshot, "Wheelbarrow") && remWood >= 50 && remFood >= 175)
+            {
+                remWood -= 50; remFood -= 175;
+                plan.actions.Add(new RTSAction { action_type = "RESEARCH", building_type = "Wheelbarrow", target_zone = "town_center", reason = "Köylü taşıma kapasitesi ve hızını artır." });
+            }
+
+            if (plan.actions.Count == 0 && snapshot.workers != null && snapshot.workers.total > 0)
+            {
+                sb.Append("Araştırma bütçesi şu an yetersiz; köylüleri gerekli kaynağa yönlendiriyoruz. ");
+                plan.actions.Add(new RTSAction { action_type = "ASSIGN_GATHER", unit_type = "villager", count = Math.Max(1, snapshot.workers.idle > 0 ? snapshot.workers.idle : 2), target_zone = eco.focusResource, reason = $"Teknoloji yatırımı için {eco.focusResourceTr} topla." });
+            }
+            else
+            {
+                sb.Append(eco.narrativeTr);
+            }
+            plan.summary = TrimSummary(sb.ToString());
+            return plan;
+        }
+
+        private static RTSActionPlan BuildKnowledgeComparisonPlan(
+            string cmdPrefix, string q, AiSafeSnapshot snapshot, EconomyAnalysis eco, EnemyIntelAnalysis enemy,
+            ref int remWood, ref int remFood, ref int remGold, ref int remPop)
+        {
+            var plan = new RTSActionPlan { confidence = 0.94f };
+            string info;
+
+            if (ContainsAny(q, "maliyet", "kac altin", "kac odun", "kac gida", "ne ister", "fiyat"))
+            {
+                info = "Birim Maliyetleri: Köylü(50G), Mızrakçı(60G,20A), Okçu(50O,30A), Kılıçlı(60G,30A), Arbaletçi(60O,40A), Süvari(100G,80A), Mancınık(200O,150A). " +
+                       $"Mevcut durumunuzda önerilen odak: {eco.focusResourceTr}.";
+            }
+            else if (ContainsAny(q, "nasil kazan", "zafer", "oyunu bitir"))
+            {
+                info = "Zafer Şartı: Düşman Şehir Merkezini (Town Center) yıkmak gerekir! Önce 6+ köylüyle ekonomiyi kurun, Feodal/Kale Çağına geçip Mancınık + Mızrakçı/Okçu ordusuyla düşman üssünü kuşatın.";
+            }
+            else if (ContainsAny(q, "mizrak") && ContainsAny(q, "okcu"))
+            {
+                info = "Mızrakçı vs Okçu: Mızrakçı süvarileri ezer (+18 bonus) ve gıda/altın ister; Okçu ise mızrakçıları uzaktan eritir ve odun/altın ister. İkisini birlikte (önde Mızrakçı duvarı, arkada Okçu) kullanmak en dengelisidir.";
+            }
+            else if (ContainsAny(q, "demirci"))
+            {
+                info = "Demirci (150 Odun): Tüm ordunun saldırısını (Demir Silahlar), zırh/canını (Pul Zırh) ve okçu menzilini (Çelik Ok Uçları) kalıcı olarak yükseltir.";
+            }
+            else
+            {
+                info = $"Karşıtlık Üçgeni: Mızrakçı > Süvari > Okçu > Mızrakçı; Mancınık > Kule/Bina. Şu anki istihbarata göre önerilen birlik: {TranslateUnitTr(enemy.recommendedCounter)}.";
+            }
+
+            plan.summary = TrimSummary($"{cmdPrefix}{info} | {eco.narrativeTr}");
+            TryAddAffordableCounterUnit(plan, enemy.recommendedCounter, enemy.primaryThreatZone, ref remWood, ref remFood, ref remGold, ref remPop,
+                $"Mevcut saha verisine göre bütçe dahilinde {TranslateUnitTr(enemy.recommendedCounter)} takviyesi.");
+            if (plan.actions.Count == 0 && snapshot.workers != null && snapshot.workers.total > 0)
+            {
+                plan.actions.Add(new RTSAction { action_type = "ASSIGN_GATHER", unit_type = "villager", count = 1, target_zone = eco.focusResource, reason = $"Ekonomi odağı: {eco.focusResourceTr}" });
+            }
+            return plan;
+        }
+
+        private static RTSActionPlan BuildBottleneckDiagnosisPlan(
+            string cmdPrefix, string q, AiSafeSnapshot snapshot, EconomyAnalysis eco, EnemyIntelAnalysis enemy,
+            ref int remWood, ref int remFood, ref int remGold, ref int remPop)
+        {
+            var plan = new RTSActionPlan { confidence = 0.95f };
+            var w = snapshot.workers ?? new AiSafeSnapshot.WorkerAllocationState();
+            var pop = snapshot.population ?? new AiSafeSnapshot.PopulationState();
+            var fog = snapshot.fog_intel;
+
+            string targetRes = eco.focusResource;
+            if (ContainsAny(q, "altin")) targetRes = "gold";
+            else if (ContainsAny(q, "odun")) targetRes = "wood";
+            else if (ContainsAny(q, "gida", "yiyecek")) targetRes = "food";
+
+            string targetTr = TranslateResourceTr(targetRes);
+            var sb = new StringBuilder();
+
+            if (ContainsAny(q, "uretemiyorum", "basamiyorum", "neden") && pop.current >= pop.max)
+            {
+                sb.Append($"{cmdPrefix}[NÜFUS TIKANIKLIĞI] Nüfusunuz tamamen dolu ({pop.current}/{pop.max})! Yeni birlik basabilmek için Ev (30 Odun) şart. ");
+                if (remWood >= 30)
+                {
+                    remWood -= 30;
+                    plan.actions.Add(new RTSAction { action_type = "BUILD", building_type = "house", target_zone = "town_center", reason = $"Nüfus kilidini ({pop.current}/{pop.max}) açmak için Ev inşa et." });
+                }
+                else
+                {
+                    targetRes = "wood";
+                    targetTr = "ODUN";
+                    sb.Append($"Ancak Odun ({remWood}) da yetersiz; 2 işçiyi Odun'a yönlendiriyoruz.");
+                }
+            }
+            else
+            {
+                int currentOnRes = (targetRes == "wood") ? w.wood : (targetRes == "gold") ? w.gold : w.food;
+                int nodesOpen = (fog == null) ? 1 : (targetRes == "wood" ? fog.discovered_wood_nodes : targetRes == "gold" ? fog.discovered_gold_nodes : fog.discovered_food_nodes);
+                sb.Append($"{cmdPrefix}[KAYNAK & İŞÇİ TEŞHİSİ] {targetTr} stoğunuz: {(targetRes == "wood" ? remWood : targetRes == "gold" ? remGold : remFood)}. ");
+                sb.Append($"Şu an {targetTr}'da {currentOnRes} köylü çalışıyor (Boşta: {w.idle}, Toplam: {w.total}). ");
+
+                if (nodesOpen == 0 && targetRes == "gold")
+                {
+                    sb.Append("Sis dışında hiç Altın Madeni keşfedilmemiş! Önce gözcüyle altın madeni açılmalı. ");
+                    if (GetMilitaryTotal(snapshot) > 0)
+                    {
+                        plan.actions.Add(new RTSAction { action_type = "SCOUT", unit_type = "soldier", count = 1, target_zone = "gold", reason = "Sis altındaki altın madenlerini tespit etmek için keşif çıkar." });
+                    }
+                }
+                else
+                {
+                    sb.Append($"ÖNERİ: {(w.idle > 0 ? w.idle + " boşta işçi dahil " : "")}köylüleri {targetTr} toplamaya yönlendirin.");
+                }
+            }
+
+            if (w.total > 0 && !plan.actions.Exists(a => a.action_type == "SCOUT" && a.target_zone == "gold"))
+            {
+                int moveCnt = Math.Max(1, w.idle > 0 ? w.idle : Math.Min(2, w.total));
+                plan.actions.Add(new RTSAction
+                {
+                    action_type = "ASSIGN_GATHER",
+                    unit_type = "villager",
+                    count = moveCnt,
+                    target_zone = targetRes,
+                    reason = $"{targetTr} açığını kapatmak için {moveCnt} köylüyü bu kaynağa odakla."
+                });
+            }
+
+            if (remFood >= 50 && remPop >= 1 && w.total < 7)
+            {
+                remFood -= 50; remPop -= 1;
+                plan.actions.Add(new RTSAction { action_type = "TRAIN_UNIT", unit_type = "villager", count = 1, target_zone = "town_center", reason = "Ekonomik toplama gücünü büyütmek için 1 köylü daha eğit." });
+            }
+
+            plan.summary = TrimSummary(sb.ToString());
+            return plan;
+        }
+
+        private static RTSActionPlan BuildCustomCommandPlan(
+            string cmdPrefix, string q, AiSafeSnapshot snapshot, EconomyAnalysis eco, EnemyIntelAnalysis enemy, string zone,
+            List<(string bType, int count)> buildings, List<(string uType, int count)> units,
+            bool asksBuild, bool asksMove, bool asksTrain,
+            ref int remWood, ref int remFood, ref int remGold, ref int remPop)
+        {
+            var plan = new RTSActionPlan { confidence = 0.93f };
+            var notes = new List<string>();
+
+            foreach (var (bType, cnt) in buildings)
+            {
+                var bc = GetBuildingCost(bType);
+                int built = 0;
+                for (int i = 0; i < cnt; i++)
+                {
+                    if (remWood >= bc.wood && remFood >= bc.food && remGold >= bc.gold)
+                    {
+                        remWood -= bc.wood; remFood -= bc.food; remGold -= bc.gold;
+                        built++;
+                        string bZone = (bType == "tower" || bType == "barracks") ? zone : "town_center";
+                        plan.actions.Add(new RTSAction
+                        {
+                            action_type = "BUILD",
+                            building_type = bType,
+                            target_zone = bZone,
+                            reason = $"Talebiniz üzerine {TranslateBuildingTr(bType)} inşası."
+                        });
+                    }
+                    else
+                    {
+                        string miss = DescribeMissingResources(bc.wood, bc.food, bc.gold, remWood, remFood, remGold);
+                        notes.Add($"{TranslateBuildingTr(bType)} için {miss} eksik");
+                        break;
+                    }
+                }
+                if (built > 0) notes.Add($"{built} {TranslateBuildingTr(bType)} planlandı");
+            }
+
+            foreach (var (uType, cnt) in units)
+            {
+                int owned = GetArmyCount(snapshot, uType);
+                // Kullanıcı açıkça "gönder/çek" dediyse ve "bas/üret" demediyse önce sahadaki mevcut birimleri kaydır
+                if (asksMove && !asksTrain && owned > 0)
+                {
+                    int toMove = Math.Min(owned, cnt);
+                    plan.actions.Add(new RTSAction
+                    {
+                        action_type = "MOVE_GROUP",
+                        unit_type = uType,
+                        count = toMove,
+                        target_zone = zone,
+                        reason = $"Sahadaki {toMove} {TranslateUnitTr(uType)} birliğini {TranslateZoneTr(zone)} hedefine gönder."
+                    });
+                    notes.Add($"{toMove} mevcut {TranslateUnitTr(uType)} -> {TranslateZoneTr(zone)}");
+                    int remainingToTrain = cnt - toMove;
+                    if (remainingToTrain > 0)
+                    {
+                        TryAddAffordableUnit(plan, uType, remainingToTrain, zone, ref remWood, ref remFood, ref remGold, ref remPop,
+                            $"Eksik kalan {TranslateUnitTr(uType)} sayısını eğitimle tamamla.");
+                    }
+                }
+                else
+                {
+                    bool added = TryAddAffordableUnit(plan, uType, cnt, zone, ref remWood, ref remFood, ref remGold, ref remPop,
+                        $"Talebiniz üzerine {TranslateZoneTr(zone)} için {TranslateUnitTr(uType)} eğitimi.");
+                    if (added)
+                    {
+                        notes.Add($"{TranslateUnitTr(uType)} eğitimi planlandı");
+                    }
+                    else if (owned > 0 && asksMove)
+                    {
+                        plan.actions.Add(new RTSAction
+                        {
+                            action_type = "MOVE_GROUP",
+                            unit_type = uType,
+                            count = Math.Min(owned, cnt),
+                            target_zone = zone,
+                            reason = $"Yeni üretim bütçesi yok; eldeki {owned} {TranslateUnitTr(uType)} birliğini gönder."
+                        });
+                    }
+                    else
+                    {
+                        var uc = GetCost(uType);
+                        string reasonStr = (remPop <= 0)
+                            ? "Nüfus dolu! Önce Ev (30 Odun) gerekli"
+                            : DescribeMissingResources(uc.wood, uc.food, uc.gold, remWood, remFood, remGold) + " eksik";
+                        notes.Add($"{TranslateUnitTr(uType)} basılamadı ({reasonStr})");
+                    }
+                }
+            }
+
+            if (plan.actions.Count == 0 && snapshot.workers != null && snapshot.workers.total > 0)
+            {
+                plan.actions.Add(new RTSAction
+                {
+                    action_type = "ASSIGN_GATHER",
+                    unit_type = "villager",
+                    count = Math.Max(1, snapshot.workers.idle > 0 ? snapshot.workers.idle : 2),
+                    target_zone = eco.focusResource,
+                    reason = $"İstenen emir için eksik kaynağı ({eco.focusResourceTr}) hızla topla."
+                });
+            }
+
+            string noteStr = notes.Count > 0 ? string.Join(" • ", notes) : eco.narrativeTr;
+            plan.summary = TrimSummary($"{cmdPrefix}{noteStr}. {eco.narrativeTr}");
+            return plan;
+        }
+
+        private static RTSActionPlan BuildEconomyFocusPlan(
+            string cmdPrefix, AiSafeSnapshot snapshot, EconomyAnalysis eco,
+            ref int remWood, ref int remFood, ref int remGold, ref int remPop)
+        {
+            var plan = new RTSActionPlan { confidence = 0.93f };
+            var w = snapshot.workers ?? new AiSafeSnapshot.WorkerAllocationState();
+            plan.summary = TrimSummary($"{cmdPrefix}Ekonomi & İşçi Planı: {eco.narrativeTr}");
+
+            if (w.total > 0)
+            {
+                int moveWorkers = Math.Max(1, eco.recommendedReassignCount);
+                plan.actions.Add(new RTSAction
+                {
+                    action_type = "ASSIGN_GATHER",
+                    unit_type = "villager",
+                    count = moveWorkers,
+                    target_zone = eco.focusResource,
+                    reason = $"Ekonomideki öncelikli açık: {eco.focusResourceTr}. {moveWorkers} köylüyü buraya odakla."
+                });
+            }
+
+            TryAddAffordableUnit(plan, "villager", 2, "town_center", ref remWood, ref remFood, ref remGold, ref remPop,
+                "Kaynak toplama hızını artırmak için bütçenin yettiği kadar yeni köylü eğit.");
+
+            if (remWood >= 60 && w.total > 0)
+            {
+                remWood -= 60;
+                plan.actions.Add(new RTSAction
+                {
+                    action_type = "BUILD",
+                    building_type = "farm",
+                    target_zone = "town_center",
+                    reason = "Kesintisiz gıda üretimi için Şehir Merkezi yanına Tarla inşa et."
+                });
+            }
+
+            if (remWood >= 50 && remFood >= 175 && !HasTech(snapshot, "Wheelbarrow"))
+            {
+                remWood -= 50; remFood -= 175;
+                plan.actions.Add(new RTSAction
+                {
+                    action_type = "RESEARCH",
+                    building_type = "Wheelbarrow",
+                    target_zone = "town_center",
+                    reason = "Köylü taşıma kapasitesini ve hızını %25 artıran El Arabası teknolojisi."
+                });
+            }
+            return plan;
+        }
+
+        private static RTSActionPlan BuildFullBattlefieldAnalysisPlan(
+            string cmdPrefix, AiSafeSnapshot snapshot, EconomyAnalysis eco, EnemyIntelAnalysis enemy, string zone,
+            ref int remWood, ref int remFood, ref int remGold, ref int remPop)
+        {
+            var plan = new RTSActionPlan { confidence = 0.95f };
+            var w = snapshot.workers ?? new AiSafeSnapshot.WorkerAllocationState();
+            var pop = snapshot.population ?? new AiSafeSnapshot.PopulationState();
+
+            plan.summary = TrimSummary($"{cmdPrefix}{eco.narrativeTr} | SİS İSTİHBARATI: {enemy.narrativeTr}");
+
+            if (eco.needsHouseSoon && remWood >= 30 && w.total > 0)
+            {
+                remWood -= 30;
+                plan.actions.Add(new RTSAction
+                {
+                    action_type = "BUILD",
+                    building_type = "house",
+                    target_zone = "town_center",
+                    reason = $"Nüfus limitine yaklaşıldı ({pop.current}/{pop.max}); yeni birlikler için +5 kapasiteli Ev kur."
+                });
+            }
+
+            if (eco.needsGoldScout && eco.focusResource == "gold" && GetMilitaryTotal(snapshot) > 0)
+            {
                 plan.actions.Add(new RTSAction
                 {
                     action_type = "SCOUT",
                     unit_type = "soldier",
                     count = 1,
-                    target_zone = focus,
-                    reason = $"Sisli bölgeyi açıp {focusTr} ve rakip hazırlığını tespit et."
-                });
-                return plan;
-            }
-
-            // 8. EV & NÜFUS
-            if (q.Contains("ev") || q.Contains("nüfus") || q.Contains("nufus") || q.Contains("kapasite") || q.Contains("barınak"))
-            {
-                var plan = new RTSActionPlan();
-                plan.confidence = 0.90f;
-                plan.summary = TrimSummary($"{cmdPrefix}Nüfus Planı ({pop.current}/{pop.max}): {eco.narrativeTr}");
-
-                if (remWood >= 30)
-                {
-                    remWood -= 30;
-                    plan.actions.Add(new RTSAction
-                    {
-                        action_type = "BUILD",
-                        building_type = "house",
-                        target_zone = "town_center",
-                        reason = "Nüfus kapasitesini +5 artırmak için Ev inşa et."
-                    });
-                }
-                else if (w.total > 0)
-                {
-                    plan.actions.Add(new RTSAction
-                    {
-                        action_type = "ASSIGN_GATHER",
-                        unit_type = "villager",
-                        count = 2,
-                        target_zone = "wood",
-                        reason = "Ev (30 Odun) inşa etmek için köylüleri Odun toplamaya odakla."
-                    });
-                }
-                return plan;
-            }
-
-            // 9. ÖZEL BİRLİK İSTEKLERİ (OKÇU / SÜVARİ)
-            if (q.Contains("okçu") || q.Contains("okcu"))
-            {
-                var plan = new RTSActionPlan();
-                plan.confidence = 0.90f;
-                plan.summary = TrimSummary($"{cmdPrefix}Okçu Sevkiyatı ({TranslateZoneTr(enemy.primaryThreatZone)}): {eco.narrativeTr}");
-                TryAddAffordableUnit(plan, "archer", 4, enemy.primaryThreatZone, ref remWood, ref remFood, ref remGold, ref remPop,
-                    "Menzilli ateş gücü sağlamak için bütçe dahilinde okçu eğit.");
-                if (plan.actions.Count == 0 && w.total > 0)
-                {
-                    plan.actions.Add(new RTSAction
-                    {
-                        action_type = "ASSIGN_GATHER",
-                        unit_type = "villager",
-                        count = 2,
-                        target_zone = (remWood < 50) ? "wood" : "gold",
-                        reason = "Okçu (50 Odun, 30 Altın) üretebilmek için eksik kaynağa odaklan."
-                    });
-                }
-                return plan;
-            }
-
-            if (q.Contains("süvari") || q.Contains("suvari") || q.Contains("atlı") || q.Contains("atli"))
-            {
-                var plan = new RTSActionPlan();
-                plan.confidence = 0.90f;
-                plan.summary = TrimSummary($"{cmdPrefix}Süvari Sevkiyatı ({TranslateZoneTr(enemy.primaryThreatZone)}): {eco.narrativeTr}");
-                TryAddAffordableUnit(plan, "cavalry", 3, enemy.primaryThreatZone, ref remWood, ref remFood, ref remGold, ref remPop,
-                    "Hızlı baskın ve okçuları ezmek için bütçe dahilinde süvari eğit.");
-                if (plan.actions.Count == 0 && w.total > 0)
-                {
-                    plan.actions.Add(new RTSAction
-                    {
-                        action_type = "ASSIGN_GATHER",
-                        unit_type = "villager",
-                        count = 2,
-                        target_zone = (remFood < 100) ? "food" : "gold",
-                        reason = "Süvari (100 Gıda, 80 Altın) için eksik kaynağa köylü odakla."
-                    });
-                }
-                return plan;
-            }
-
-            // 10. VARSAYILAN DİNAMİK TAKTİK + EKONOMİ PLANI (Kuzey Kapısını Savun vb.)
-            var defPlan = new RTSActionPlan();
-            defPlan.confidence = 0.91f;
-            defPlan.summary = TrimSummary($"{cmdPrefix}{enemy.narrativeTr} | {eco.narrativeTr}");
-
-            TryAddAffordableCounterUnit(defPlan, enemy.recommendedCounter, enemy.primaryThreatZone, ref remWood, ref remFood, ref remGold, ref remPop,
-                $"Sis içi düşman analizine ({TranslateEnemyClassTr(enemy.dominantEnemyClass)}) göre karşıt birlik eğitimi.");
-
-            if (GetArmyCount(snapshot, enemy.recommendedCounter) > 0)
-            {
-                defPlan.actions.Add(new RTSAction
-                {
-                    action_type = "MOVE_GROUP",
-                    unit_type = enemy.recommendedCounter,
-                    count = Math.Min(6, GetArmyCount(snapshot, enemy.recommendedCounter)),
-                    target_zone = enemy.primaryThreatZone,
-                    reason = $"Mevcut {TranslateUnitTr(enemy.recommendedCounter)} birliklerini {TranslateZoneTr(enemy.primaryThreatZone)} mevzisine çek."
+                    target_zone = "gold",
+                    reason = "Altın stoğu düşük ve henüz keşfedilmemiş altın madenleri var; 1 gözcüyü altın keşfine çıkar."
                 });
             }
-
-            if (eco.recommendedReassignCount > 0 && w.total > 0)
+            else if (eco.recommendedReassignCount > 0 && w.total > 0)
             {
-                defPlan.actions.Add(new RTSAction
+                plan.actions.Add(new RTSAction
                 {
                     action_type = "ASSIGN_GATHER",
                     unit_type = "villager",
                     count = eco.recommendedReassignCount,
                     target_zone = eco.focusResource,
-                    reason = $"{eco.focusResourceTr} üretimini güçlendirmek için işçi yönlendirmesi."
+                    reason = $"{eco.focusResourceTr} üretimine odaklanmak için {eco.recommendedReassignCount} köylüyü bu kaynağa yönlendir."
                 });
             }
 
-            if (defPlan.actions.Count == 0 && GetMilitaryTotal(snapshot) > 0)
+            if (eco.shouldTrainVillager && remFood >= 50 && remPop >= 1)
             {
-                defPlan.actions.Add(new RTSAction
+                remFood -= 50; remPop -= 1;
+                plan.actions.Add(new RTSAction
+                {
+                    action_type = "TRAIN_UNIT",
+                    unit_type = "villager",
+                    count = 1,
+                    target_zone = "town_center",
+                    reason = $"Toplam işçi sayısı az ({w.total}); ekonomiyi hızlandırmak için 1 yeni köylü eğit."
+                });
+            }
+
+            bool mapMostlyFoggy = snapshot.fog_intel == null || snapshot.fog_intel.explored_percent < 40 || (!enemy.hasLiveSighting && !enemy.hasFogMemory && enemy.discoveredEnemyBuildings == 0);
+            if (mapMostlyFoggy && GetMilitaryTotal(snapshot) > 0)
+            {
+                plan.actions.Add(new RTSAction
                 {
                     action_type = "SCOUT",
                     unit_type = "soldier",
                     count = 1,
                     target_zone = "unexplored",
-                    reason = "Kaynaklar yetersiz olduğundan harita sisini açarak düşman durumunu öğren."
+                    reason = $"Haritanın %{(snapshot.fog_intel != null ? snapshot.fog_intel.explored_percent : 0)}'i açık; rakip yerleşimini ve birikimini sis arkasında tespit et."
                 });
             }
-            return defPlan;
+
+            TryAddAffordableCounterUnit(plan, enemy.recommendedCounter, zone, ref remWood, ref remFood, ref remGold, ref remPop,
+                enemy.hasLiveSighting || enemy.hasFogMemory || enemy.discoveredEnemyBuildings > 0
+                    ? $"Sis istihbaratına ({TranslateEnemyClassTr(enemy.dominantEnemyClass)}) karşı en etkili karşıt birim."
+                    : "Erken akınlara karşı savunma çekirdeği oluştur.");
+
+            if (plan.actions.Count == 0 && GetMilitaryTotal(snapshot) > 0)
+            {
+                plan.actions.Add(new RTSAction { action_type = "SCOUT", unit_type = "soldier", count = 1, target_zone = "unexplored", reason = "Mevcut kaynaklar sınırlı olduğundan sisli bölgelerde ücretsiz keşif icra et." });
+            }
+            else if (plan.actions.Count == 0 && w.total > 0)
+            {
+                plan.actions.Add(new RTSAction { action_type = "ASSIGN_GATHER", unit_type = "villager", count = 1, target_zone = eco.focusResource, reason = $"Bütçeyi toparlamak için köylüleri {eco.focusResourceTr} kaynağına odakla." });
+            }
+
+            return plan;
+        }
+
+        private static bool TryDetectCounteredEnemy(string q, out string enemyUnit, out string counterUnit, out string reasonTr)
+        {
+            if (ContainsAny(q, "suvari", "atli", "sovalye", "cavalry"))
+            {
+                enemyUnit = "cavalry"; counterUnit = "spearman";
+                reasonTr = "Mızrakçılar atlılara karşı +18 devasa bonus hasar verir ve maliyeti çok ekonomiktir";
+                return true;
+            }
+            if (ContainsAny(q, "okcu", "arbalet", "archer", "crossbow"))
+            {
+                enemyUnit = "archer"; counterUnit = "cavalry";
+                reasonTr = "Süvariler yüksek hızlarıyla menzilli hattı kapatıp okçuları hızla ezer";
+                return true;
+            }
+            if (ContainsAny(q, "mizrak", "kilic", "piyade", "spearman", "swordsman"))
+            {
+                enemyUnit = "spearman"; counterUnit = "archer";
+                reasonTr = "Okçular yavaş hareket eden yakın dövüş piyadelerini uzaktan hasar almadan eritir";
+                return true;
+            }
+            if (ContainsAny(q, "mancinik", "katapult", "trebuchet"))
+            {
+                enemyUnit = "trebuchet"; counterUnit = "cavalry";
+                reasonTr = "Kuşatma silahları yakın mesafede savunmasızdır; hızlı süvariler onları anında yok eder";
+                return true;
+            }
+            if (ContainsAny(q, "kule", "kale", "sur", "tower", "castle"))
+            {
+                enemyUnit = "tower"; counterUnit = "trebuchet";
+                reasonTr = "Mancınık kule ve kale menzilinin dışından (+200 bina bonusuyla) yapıları yerle bir eder";
+                return true;
+            }
+            enemyUnit = ""; counterUnit = "spearman"; reasonTr = "";
+            return false;
+        }
+
+        private static string DetectTargetZone(string q, string fallbackZone)
+        {
+            if (ContainsAny(q, "bati", "sol kanat", "west")) return "west_flank";
+            if (ContainsAny(q, "dogu", "sag kanat", "east")) return "east_flank";
+            if (ContainsAny(q, "dusman us", "dusman kamp", "enemy", "karargah")) return "enemy_base";
+            if (ContainsAny(q, "bizim us", "ana us", "sehir merkez", "town center", "ev yan")) return "town_center";
+            if (ContainsAny(q, "kopru", "gecit", "kuzey", "north", "orta")) return "north_gate";
+            return string.IsNullOrEmpty(fallbackZone) ? "north_gate" : fallbackZone;
+        }
+
+        private static List<(string uType, int count)> DetectMentionedUnits(string q)
+        {
+            string cleaned = (q ?? "").Replace("okcu poligon", "").Replace("mancinik atolye", "").Replace("sehir merkez", "");
+            var found = new List<(string uType, int count)>();
+            var patterns = new (string uType, string[] keys)[]
+            {
+                ("villager", new[] { "koylu", "isci", "villager" }),
+                ("spearman", new[] { "mizrak", "spearman" }),
+                ("crossbowman", new[] { "arbalet", "crossbow" }),
+                ("archer", new[] { "okcu", "archer" }),
+                ("swordsman", new[] { "kilicli", "kilic", "swordsman" }),
+                ("cavalry", new[] { "suvari", "atli", "sovalye", "cavalry" }),
+                ("trebuchet", new[] { "mancinik", "katapult", "trebuchet" }),
+            };
+
+            foreach (var p in patterns)
+            {
+                if (ContainsAny(cleaned, p.keys))
+                {
+                    int cnt = ExtractCountNearKeywords(cleaned, p.keys, (p.uType == "trebuchet" || p.uType == "villager") ? 2 : 3);
+                    found.Add((p.uType, cnt));
+                }
+            }
+            return found;
+        }
+
+        private static List<(string bType, int count)> DetectMentionedBuildings(string q)
+        {
+            var found = new List<(string bType, int count)>();
+            var patterns = new (string bType, string[] keys)[]
+            {
+                ("house", new[] { "ev ", "evler", "barinak", "house" }),
+                ("farm", new[] { "tarla", "ciftlik", "farm" }),
+                ("barracks", new[] { "kisla", "barracks" }),
+                ("archeryrange", new[] { "okcu poligon", "talimgah", "archery" }),
+                ("blacksmith", new[] { "demirci", "blacksmith" }),
+                ("tower", new[] { "kule", "tower" }),
+                ("castle", new[] { "kale", "castle" }),
+                ("siegeworkshop", new[] { "kusatma atolye", "mancinik atolye", "siege" }),
+                ("market", new[] { "pazar", "market" }),
+            };
+
+            string padded = " " + q + " ";
+            foreach (var p in patterns)
+            {
+                if (ContainsAny(padded, p.keys))
+                {
+                    int cnt = ExtractCountNearKeywords(q, p.keys, 1);
+                    found.Add((p.bType, Math.Min(3, cnt)));
+                }
+            }
+            return found;
+        }
+
+        private static int ExtractCountNearKeywords(string q, string[] keywords, int defaultCount)
+        {
+            for (int i = 0; i < keywords.Length; i++)
+            {
+                string kw = Regex.Escape(keywords[i].Trim());
+                var m = Regex.Match(q, @"(\d{1,2})\s*(?:adet|tane|x)?\s*[a-z]*" + kw);
+                if (m.Success && int.TryParse(m.Groups[1].Value, out int n))
+                    return Math.Max(1, Math.Min(20, n));
+            }
+            return defaultCount;
+        }
+
+        private static bool ContainsAny(string q, params string[] terms)
+        {
+            for (int i = 0; i < terms.Length; i++)
+            {
+                if (q.Contains(terms[i])) return true;
+            }
+            return false;
+        }
+
+        private static string DescribeMissingResources(int reqW, int reqF, int reqG, int hasW, int hasF, int hasG)
+        {
+            var parts = new List<string>();
+            if (reqW > hasW) parts.Add($"{reqW - hasW} Odun");
+            if (reqF > hasF) parts.Add($"{reqF - hasF} Gıda");
+            if (reqG > hasG) parts.Add($"{reqG - hasG} Altın");
+            return parts.Count > 0 ? string.Join(", ", parts) : "Nüfus";
         }
 
         private static void TryAddAffordableCounterUnit(
@@ -911,11 +1344,8 @@ namespace CSE377.AI
         {
             if (TryAddAffordableUnit(plan, unitType, 3, zone, ref remWood, ref remFood, ref remGold, ref remPop, reason))
                 return;
-
-            // Pahalı birim (ör. cavalry/trebuchet) karşılanamıyorsa spearmen/archer dene
             if (unitType != "spearman" && TryAddAffordableUnit(plan, "spearman", 2, zone, ref remWood, ref remFood, ref remGold, ref remPop, reason + " (bütçe dostu alternatif)"))
                 return;
-
             TryAddAffordableUnit(plan, "archer", 2, zone, ref remWood, ref remFood, ref remGold, ref remPop, reason + " (bütçe dostu alternatif)");
         }
 
@@ -963,16 +1393,20 @@ namespace CSE377.AI
             }
         }
 
-        private static string TranslateEnemyClassTr(string cls)
+        private static (int wood, int food, int gold) GetBuildingCost(string bType)
         {
-            switch ((cls ?? "").ToLowerInvariant())
+            switch ((bType ?? "").ToLowerInvariant())
             {
-                case "cavalry": return "Süvari/Atlı";
-                case "ranged": return "Menzilli (Okçu)";
-                case "infantry": return "Piyade";
-                case "siege": return "Kuşatma/Mancınık";
-                case "fortified": return "Kule/Tahkimat";
-                default: return "Bilinmeyen";
+                case "house": return (30, 0, 0);
+                case "farm": return (60, 0, 0);
+                case "barracks": return (150, 0, 0);
+                case "blacksmith": return (150, 0, 0);
+                case "tower": return (125, 0, 50);
+                case "archeryrange": return (175, 0, 0);
+                case "siegeworkshop": return (200, 0, 100);
+                case "castle": return (350, 0, 250);
+                case "market": return (150, 0, 0);
+                default: return (150, 0, 0);
             }
         }
 

@@ -146,10 +146,22 @@ namespace CSE377.AI
                     }
 
                     // Oyuncunun bu birimden ordusunda olup olmadığını denetle
+                    bool isGenericSoldier = string.IsNullOrEmpty(action.unit_type)
+                        || string.Equals(action.unit_type, "soldier", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(action.unit_type, "army", StringComparison.OrdinalIgnoreCase);
                     bool hasUnit = false;
                     foreach (var u in snapshot.army)
                     {
-                        if (string.Equals(u.type, action.unit_type, StringComparison.OrdinalIgnoreCase))
+                        if (u == null || u.count <= 0) continue;
+                        if (isGenericSoldier)
+                        {
+                            if (!string.Equals(u.type, "villager", StringComparison.OrdinalIgnoreCase))
+                            {
+                                hasUnit = true;
+                                break;
+                            }
+                        }
+                        else if (string.Equals(u.type, action.unit_type, StringComparison.OrdinalIgnoreCase))
                         {
                             hasUnit = true;
                             break;

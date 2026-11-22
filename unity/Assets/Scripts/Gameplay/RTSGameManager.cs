@@ -840,6 +840,8 @@ namespace CSE377.Gameplay
         {
             string bKey = string.IsNullOrEmpty(buildingTypeStr) ? "barracks" : buildingTypeStr.ToLower().Trim();
             if (bKey == "village_center" || bKey == "villagecenter" || bKey == "town_center") bKey = "towncenter";
+            else if (bKey == "archery_range") bKey = "archeryrange";
+            else if (bKey == "siege_workshop") bKey = "siegeworkshop";
             RTSBuildingType bType = RTSBuildingType.Barracks;
             if (bKey == "tower" || bKey == "defensetower") bType = RTSBuildingType.DefenseTower;
             else if (bKey == "blacksmith") bType = RTSBuildingType.Blacksmith;
@@ -847,6 +849,9 @@ namespace CSE377.Gameplay
             else if (bKey == "house") bType = RTSBuildingType.House;
             else if (bKey == "farm") bType = RTSBuildingType.Farm;
             else if (bKey == "castle") bType = RTSBuildingType.Castle;
+            else if (bKey == "archeryrange") bType = RTSBuildingType.ArcheryRange;
+            else if (bKey == "siegeworkshop") bType = RTSBuildingType.SiegeWorkshop;
+            else if (bKey == "market") bType = RTSBuildingType.Market;
 
             if (execTeam == LocalPlayerTeam && GameActionValidator.BuildingCosts.TryGetValue(bKey, out var cost))
             {
@@ -899,6 +904,11 @@ namespace CSE377.Gameplay
             {
                 if (b == null || b.team != execTeam || b.currentHp <= 0) continue;
                 if (uLower == "villager" && b.buildingType == RTSBuildingType.TownCenter)
+                {
+                    targetBld = b;
+                    break;
+                }
+                else if (uLower == "trebuchet" && b.buildingType == RTSBuildingType.SiegeWorkshop)
                 {
                     targetBld = b;
                     break;

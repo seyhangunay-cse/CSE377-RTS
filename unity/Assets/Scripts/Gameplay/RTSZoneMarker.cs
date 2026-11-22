@@ -61,14 +61,26 @@ namespace CSE377.Gameplay
                 {
                     key = (requesterTeam == UnitTeam.Enemy) ? "main_base" : "enemy_base";
                 }
-                else if (key == "north" || key == "gate" || key == "northgate")
+                else if (key == "north" || key == "gate" || key == "northgate" || key == "bridge" || key == "kopru" || key == "center" || key == "north_gate")
                 {
                     key = "north_gate";
+                }
+                else if (key == "west_flank" || key == "west" || key == "bati")
+                {
+                    return new Vector3(-28f, 0f, 0f) + new Vector3(Random.Range(-4f, 4f), 0f, Random.Range(-4f, 4f));
+                }
+                else if (key == "east_flank" || key == "east" || key == "dogu")
+                {
+                    return new Vector3(28f, 0f, 0f) + new Vector3(Random.Range(-4f, 4f), 0f, Random.Range(-4f, 4f));
                 }
 
                 if (AllZones.TryGetValue(key, out var marker) && marker != null)
                 {
                     return marker.GetRandomPositionInZone();
+                }
+                if (key == "north_gate")
+                {
+                    return new Vector3(Random.Range(-4f, 4f), 0f, Random.Range(-4f, 4f));
                 }
             }
             return fallback;

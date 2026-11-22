@@ -178,16 +178,20 @@ TEMEL DOKTRİN VE ÇALIŞMA ADIMLARI:
    - Kaynaklar, köylü işçi dağılımı ve odaklanılacak kaynak için: get_worker_and_economy_report
    - Mevcut ordumuzu görmek için: get_army_status
    - Birim üreteceksen bütçeyi doğrulamak için: estimate_plan_cost
-   - Karşıtlık/kural sorusu varsa: search_game_knowledge
-2. Karşıtlık Sistemi (Counters):
-   - Süvarilere karşı Mızrakçı (Spearman) en etkilidir.
-   - Mızrakçılara karşı Okçu (Archer) en etkilidir.
-   - Okçulara karşı Süvari (Cavalry) en etkilidir.
-3. Özet ve İşçi Odağı: summary alanında mevcut kaynak durumunu, işçi dağılımını, odaklanılması gereken kaynağı ('food', 'wood' veya 'gold') ve sis içi rakip analizini kısaca özetle.
-4. Kaynak Kontrolü: Oyuncunun bütçesini aşan (affordable: false) birim üretim emri planlama.
+   - Karşıtlık/maliyet/çağ/kural sorusu varsa: search_game_knowledge
+2. Karşıtlık ve Taktik Kuralları (Counters & Soru Yorumlama):
+   - Eğer oyuncu "Okçulara karşı ne basayım?", "Atlıları nasıl durdururum?", "Mancınığa ne iyi gelir?" diye sorarsa SORUDA GEÇEN DÜŞMANA KARŞIT BİRİMİ öner! (Asla düşmanın aynısını üretme!)
+   - Süvarilere / Atlılara karşı -> Mızrakçı (Spearman, 60G + 20A)
+   - Mızrakçılara / Piyadelere karşı -> Okçu (Archer, 50O + 30A) veya Arbaletçi
+   - Okçulara / Arbaletçilere / Mancınıklara karşı -> Süvari (Cavalry, 100G + 80A)
+   - Kulelere / Kalelere / Surlara karşı -> Mancınık (Trebuchet, 200O + 150A)
+3. Çağ & Ekonomi Gereksinimleri:
+   - II. Feodal Çağ (Feudal_Age): 200 Odun + 500 Gıda; III. Kale Çağı (Castle_Age): 800 Gıda + 200 Altın. Kaynak eksikse net farkı söyle ve ASSIGN_GATHER öner.
+   - summary alanında oyuncunun sorusuna doğrudan, mantıklı ve mevcut kaynak/nüfus/işçi/sis verisine dayalı yanıt ver; odaklanılacak kaynağı ('food', 'wood' veya 'gold') ve nedenini açıkla.
+4. Kaynak Kontrolü: Oyuncunun bütçesini aşan (affordable: false) birim üretim emri planlama. Bütçe yetmiyorsa eldeki orduyu (MOVE_GROUP) kullan veya işçileri eksik kaynağa (ASSIGN_GATHER) yönlendir.
 5. Çıktı Formatı: Vereceğin nihai cevabın SADECE aşağıdaki JSON şemasına uyması ZORUNLUDUR:
 {
-  "summary": "Kaynak/işçi odağı ve sis içi rakip analiz özeti (maksimum 650 karakter)",
+  "summary": "Soruya doğrudan yanıt + kaynak/işçi odağı + sis içi rakip analizi (maksimum 650 karakter)",
   "confidence": 0.90,
   "actions": [
     {
@@ -202,12 +206,10 @@ TEMEL DOKTRİN VE ÇALIŞMA ADIMLARI:
 
 ÖNEMLİ KISITLAR:
 - 'action_type' yalnızca şunlardan biri olabilir: 'TRAIN_UNIT', 'BUILD', 'MOVE_GROUP', 'RESEARCH', 'SCOUT', 'ATTACK', 'ASSIGN_GATHER'.
-- 'ASSIGN_GATHER' eyleminde 'unit_type' 'villager', 'target_zone' ise yalnızca 'food', 'wood' veya 'gold' olmalıdır.
-- 'ATTACK' eylemi için 'unit_type' alanına 'soldier', 'target_zone' alanına 'north_gate' veya 'enemy_base' yaz.
-- 'TRAIN_UNIT' eylemi için 'unit_type' alanına 'spearman', 'archer', 'cavalry', 'villager' yaz.
-- 'RESEARCH' eylemi için 'building_type' alanına teknoloji adını yaz (örn: 'Wheelbarrow', 'Iron_Weapons', 'Scale_Armor', 'Fletching').
-- 'BUILD' eylemi için 'building_type' alanına inşa edilecek binayı yaz (örn: 'barracks', 'tower', 'blacksmith', 'house', 'farm').
-- 'SCOUT' eylemi için 'target_zone' alanına 'gold' veya 'unexplored' yaz.
+- 'target_zone' değerleri: hareket/savunma için 'north_gate', 'west_flank', 'east_flank', 'main_base', 'enemy_base'; keşif için 'gold' veya 'unexplored'; işçi odaklı ASSIGN_GATHER için 'food', 'wood' veya 'gold'.
+- 'TRAIN_UNIT' için 'unit_type': 'villager', 'spearman', 'archer', 'swordsman', 'crossbowman', 'cavalry', 'trebuchet'.
+- 'RESEARCH' için 'building_type': 'Feudal_Age', 'Castle_Age', 'Wheelbarrow', 'Iron_Weapons', 'Scale_Armor', 'Fletching', 'Ballistics'.
+- 'BUILD' için 'building_type': 'house', 'farm', 'barracks', 'archeryrange', 'blacksmith', 'tower', 'castle', 'siegeworkshop', 'market'.
 - 'count' 1 ile 20 arasında bir tamsayı olmalıdır.
 - JSON nesnesi dışında hiçbir karşılama, önsöz veya markdown açıklaması ekleme!
 """
@@ -419,9 +421,14 @@ def run_agent(user_query: str, max_steps: int = 6) -> Dict[str, Any]:
     active_team = getattr(server, "ACTIVE_TEAM_ID", "BLUE")
     cmd_tag = "[KIRMIZI AI KOMUTAN]" if active_team == "RED" else "[MAVİ AI KOMUTAN]"
 
-    # 1. Hızlı Taarruz ve Kuşatma Tespiti (Attack / Kuşatma / Hücum / Karargah)
+    # 1. Hızlı Komut Tespiti (Soru / analiz / karşıtlık / bilgi cümleleri kısa devreye girmez!)
     q_lower = user_query.lower()
-    is_analysis_query = any(k in q_lower for k in ["analiz", "öneri", "oneri", "tavsiye", "durum", "odak", "ne yap", "rakip", "dağıt", "dagit"])
+    is_analysis_query = any(k in q_lower for k in [
+        "?", "analiz", "öneri", "oneri", "tavsiye", "durum", "odak", "ne yap", "ne bas",
+        "ne üret", "ne uret", "rakip", "dağıt", "dagit", "karşı", "karsi", "nasıl", "nasil",
+        "neden", "hangisi", "hangi ", "maliyet", "eksik", "hazır", "hazir", "mıyım", "miyim",
+        "mısın", "misin", "mi?", "mı?", "mu?", "mü?", "kaç", "kac ", "ne zaman"
+    ])
     if not is_analysis_query and any(k in q_lower for k in ["saldır", "saldir", "taarruz", "hücum", "hucum", "kuşat", "kusat", "yok et", "öldür", "oldur", "vur", "kaleye", "karargah"]):
         target_zone = "enemy_base" if any(k in q_lower for k in ["karargah", "kale", "üs", "us", "kamp", "camp", "bina"]) else "north_gate"
         plan = {

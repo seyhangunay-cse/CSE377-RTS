@@ -354,8 +354,11 @@ namespace CSE377.Gameplay
                 };
                 gatewayClient.OnPlanReceived += (plan) =>
                 {
-                    string cmdTag = (RTSGameManager.LocalPlayerTeam == UnitTeam.Enemy) ? "🔴 Kırmızı AI Komutanı" : "🔵 Mavi AI Komutanı";
-                    SetAiStatus($"{cmdTag}: Plan Hazır! Onayınız bekleniyor.", Color.green);
+                    string cmdTag = (RTSGameManager.LocalPlayerTeam == UnitTeam.Enemy) ? "🔴 Kırmızı AI" : "🔵 Mavi AI";
+                    string shortSummary = (plan != null && !string.IsNullOrEmpty(plan.summary))
+                        ? (plan.summary.Length > 110 ? plan.summary.Substring(0, 107) + "..." : plan.summary)
+                        : "Plan Hazır! Onayınız bekleniyor.";
+                    SetAiStatus($"{cmdTag}: {shortSummary}", Color.green);
                 };
                 gatewayClient.OnPlanRequestFailed += (err) => SetAiStatus($"Hata: {err}", Color.red);
             }
