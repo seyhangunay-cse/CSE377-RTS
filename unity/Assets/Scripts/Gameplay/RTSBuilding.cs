@@ -105,7 +105,7 @@ namespace CSE377.Gameplay
 
         public void AddConstructionProgress(float amount)
         {
-            if (isConstructed) return;
+            if (isConstructed || isDestroyed || currentHp <= 0) return;
 
             constructionProgress = Mathf.Min(100f, constructionProgress + amount);
             currentHp = Mathf.Max(1, Mathf.RoundToInt((constructionProgress / 100f) * maxHp));
@@ -115,6 +115,94 @@ namespace CSE377.Gameplay
             {
                 CompleteConstruction();
             }
+        }
+
+        public void SetNetworkConstructionProgress(float prog)
+        {
+            if (isConstructed || isDestroyed || currentHp <= 0) return;
+
+            constructionProgress = Mathf.Clamp(prog, 0f, 100f);
+            currentHp = Mathf.Max(1, Mathf.RoundToInt((constructionProgress / 100f) * maxHp));
+            UpdateVisualProgress();
+
+            if (constructionProgress >= 100f)
+            {
+                CompleteConstruction();
+            }
+        }
+
+        private static string GetCostKeyForBuilding(RTSBuildingType type)
+        {
+            switch (type)
+            {
+                case RTSBuildingType.DefenseTower: return "tower";
+                case RTSBuildingType.Blacksmith: return "blacksmith";
+                case RTSBuildingType.House: return "house";
+                case RTSBuildingType.Farm: return "farm";
+                case RTSBuildingType.StoneWall: return "stonewall";
+                case RTSBuildingType.CityGate: return "citygate";
+                case RTSBuildingType.Castle: return "castle";
+                case RTSBuildingType.ArcheryRange: return "archeryrange";
+                case RTSBuildingType.SiegeWorkshop: return "siegeworkshop";
+                case RTSBuildingType.Market: return "market";
+                case RTSBuildingType.TownCenter: return "towncenter";
+                default: return "barracks";
+            }
+        }
+
+        public void CancelConstruction()
+        {
+            if (isConstructed || isDestroyed || currentHp <= 0) return;
+
+            isDestroyed = true;
+            currentHp = 0;
+
+            foreach (var u in RTSUnit.AllUnits)
+            {
+                if (u == null) continue;
+                var v = u.GetComponent<RTSVillager>();
+                if (v != null && v.currentBuildingTask == this)
+                {
+                    v.CancelTask();
+                }
+            }
+
+            if (team == RTSGameManager.LocalPlayerTeam && RTSGameManager.Instance != null)
+            {
+                string bKey = GetCostKeyForBuilding(buildingType);
+                float refundRatio = Mathf.Clamp01(1f - (constructionProgress / 100f));
+                int rWood = 0, rFood = 0, rGold = 0;
+
+                if (CSE377.AI.GameActionValidator.BuildingCosts.TryGetValue(bKey, out var cost))
+                {
+                    rWood = Mathf.RoundToInt(cost.wood * refundRatio);
+                    rFood = Mathf.RoundToInt(cost.food * refundRatio);
+                    rGold = Mathf.RoundToInt(cost.gold * refundRatio);
+                    RTSGameManager.Instance.wood += rWood;
+                    RTSGameManager.Instance.food += rFood;
+                    RTSGameManager.Instance.gold += rGold;
+                }
+
+                RTSGameManager.Instance.UpdateHUD();
+                RTSAudioManager.Instance?.PlaySound(RTSSoundType.Click);
+                RTSHUDController.Instance?.SetAiStatus(
+                    $"[İNŞAAT İPTAL] {displayName} iptal edildi (+{rWood} Odun, +{rFood} Gıda, +{rGold} Altın iade).",
+                    Color.yellow);
+            }
+
+            if (RTSSelectionManager.Instance != null && RTSSelectionManager.Instance.selectedBuilding == this)
+            {
+                RTSSelectionManager.Instance.DeselectAll();
+            }
+
+            RTSNetworkSyncManager.Instance?.BroadcastBuildingHpSync(this, forceZero: true);
+            AllBuildings.Remove(this);
+
+            Vector3 footprint = GetBuildingFootprint();
+            RTSVFXManager.Instance?.SetBuildingDamagedSmoke(this, false);
+            RTSVFXManager.Instance?.SpawnHammerDustVFX(transform.position + Vector3.up * 0.8f);
+            RTSMinimapController.Instance?.DrawMinimap();
+            Destroy(gameObject);
         }
 
         private void CompleteConstruction()
@@ -150,6 +238,11 @@ namespace CSE377.Gameplay
             // Nüfus ve ekonomi HUD güncellemesi
             RTSGameManager.Instance?.UpdateHUD();
 
+            if (RTSSelectionManager.Instance != null && RTSSelectionManager.Instance.selectedBuilding == this)
+            {
+                RTSSelectionManager.Instance.SelectBuilding(this);
+            }
+
             if (buildingType == RTSBuildingType.House && team == RTSGameManager.LocalPlayerTeam)
             {
                 RTSHUDController.Instance?.SetAiStatus("[EV İNŞA EDİLDİ] Nüfus tavanınız +5 artırıldı!", Color.green);
@@ -168,13 +261,13 @@ namespace CSE377.Gameplay
                     RTSHUDController.Instance?.SetAiStatus("[TARLA İNŞA EDİLDİ] Buğday tarlanız hazır! Hasat başladı.", Color.green);
                 }
 
-                // Tarlayı inşa eden işçiyi doğrudan tarlanın yanında hasada ata
+                // Yalnızca bu tarlayı inşa eden veya hemen yanında boşta bekleyen işçiyi hasada ata
                 foreach (var u in RTSUnit.AllUnits)
                 {
                     if (u != null && u.team == this.team && u.unitType.ToLower() == "villager" && u.currentHp > 0)
                     {
                         var v = u.GetComponent<RTSVillager>();
-                        if (v != null && (v.currentBuildingTask == this || Vector3.Distance(u.transform.position, transform.position) <= 5.5f))
+                        if (v != null && (v.currentBuildingTask == this || (v.currentState == VillagerState.Idle && Vector3.Distance(u.transform.position, transform.position) <= 5.5f)))
                         {
                             v.AssignHarvestTask(res);
                         }

@@ -870,18 +870,11 @@ namespace CSE377.Gameplay
                 RTSNetworkSyncManager.Instance?.BroadcastBuildingSpawn(bType, buildPos, execTeam, false);
             }
 
-            // İlgili takımın uygun bir köylüsünü inşaat için görevlendir
-            foreach (var u in RTSUnit.AllUnits)
+            // İlgili takımın önce boşta (Idle), yoksa en uygun köylüsünü inşaat için görevlendir
+            var bestBuilder = RTSVillager.FindBestBuilderFor(execTeam, buildPos);
+            if (bestBuilder != null)
             {
-                if (u != null && u.team == execTeam && u.unitType.ToLower() == "villager" && u.currentHp > 0)
-                {
-                    var v = u.GetComponent<RTSVillager>();
-                    if (v != null)
-                    {
-                        v.AssignBuildTask(building);
-                        break;
-                    }
-                }
+                bestBuilder.AssignBuildTask(building);
             }
 
             Debug.Log($"[RTSGameManager] ({execTeam}) AI Onaylı İnşaat Başlatıldı: {bType} @ {targetZone}");
@@ -902,7 +895,7 @@ namespace CSE377.Gameplay
 
             foreach (var b in RTSBuilding.AllBuildings)
             {
-                if (b == null || b.team != execTeam || b.currentHp <= 0) continue;
+                if (b == null || b.team != execTeam || b.isDestroyed || b.currentHp <= 0 || !b.isConstructed) continue;
                 if (uLower == "villager" && b.buildingType == RTSBuildingType.TownCenter)
                 {
                     targetBld = b;

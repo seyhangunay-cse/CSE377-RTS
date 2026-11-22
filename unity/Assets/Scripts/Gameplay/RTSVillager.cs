@@ -72,9 +72,98 @@ namespace CSE377.Gameplay
             return source.transform.position;
         }
 
+        private float nextTargetRetryTime;
+        private int targetRetryCount;
+
+        private bool IsRemoteNetworkVillager =>
+            unit != null &&
+            RTSNetworkSyncManager.Instance != null &&
+            RTSNetworkSyncManager.Instance.isMultiplayerMode &&
+            unit.team != RTSGameManager.LocalPlayerTeam;
+
+        public static RTSVillager FindBestBuilderFor(UnitTeam team, Vector3 buildPos)
+        {
+            RTSVillager best = null;
+            int bestRank = int.MaxValue;
+            float bestDistSq = float.MaxValue;
+
+            foreach (var u in RTSUnit.AllUnits)
+            {
+                if (u == null || u.isDead || u.currentHp <= 0 || u.team != team) continue;
+                var v = u.GetComponent<RTSVillager>();
+                if (v == null || !v.enabled) continue;
+
+                int rank = 3;
+                if (v.currentState == VillagerState.Idle) rank = 0;
+                else if (v.currentState == VillagerState.WalkingToResource ||
+                         v.currentState == VillagerState.Harvesting ||
+                         v.currentState == VillagerState.ReturningToTownCenter) rank = 1;
+                else if (v.currentState == VillagerState.WalkingToRepair ||
+                         v.currentState == VillagerState.Repairing) rank = 2;
+
+                float dx = u.transform.position.x - buildPos.x;
+                float dz = u.transform.position.z - buildPos.z;
+                float distSq = dx * dx + dz * dz;
+
+                if (rank < bestRank || (rank == bestRank && distSq < bestDistSq))
+                {
+                    bestRank = rank;
+                    bestDistSq = distSq;
+                    best = v;
+                }
+            }
+
+            return best;
+        }
+
+        private float GetHorizontalDistanceToBuilding(RTSBuilding b)
+        {
+            if (b == null) return float.MaxValue;
+            Collider bCol = b.GetComponent<Collider>();
+            Vector3 targetPoint = (bCol != null) ? bCol.ClosestPoint(transform.position) : b.transform.position;
+            return Vector2.Distance(
+                new Vector2(transform.position.x, transform.position.z),
+                new Vector2(targetPoint.x, targetPoint.z));
+        }
+
+        private Vector3 ComputeBuildingApproachSpot(RTSBuilding building, float standOffset = 0.7f)
+        {
+            Collider bCol = building.GetComponent<Collider>();
+            Vector3 toMe = transform.position - building.transform.position;
+            toMe.y = 0f;
+            if (toMe.sqrMagnitude < 0.04f) toMe = Vector3.forward;
+            toMe.Normalize();
+
+            if (bCol == null)
+            {
+                return building.transform.position + toMe * 2.2f;
+            }
+
+            Vector3 closest = bCol.ClosestPoint(transform.position);
+            Vector3 flatPos = new Vector3(transform.position.x, 0f, transform.position.z);
+            Vector3 flatClosest = new Vector3(closest.x, 0f, closest.z);
+
+            // Köylü bina footprint'inin içinde kaldıysa dış yüzeye yansıt
+            if (Vector3.Distance(flatPos, flatClosest) < 0.05f)
+            {
+                Vector3 farOutside = building.transform.position + toMe * 12f;
+                farOutside.y = bCol.bounds.center.y;
+                closest = bCol.ClosestPoint(farOutside);
+                flatClosest = new Vector3(closest.x, 0f, closest.z);
+            }
+
+            Vector3 dirFromEdge = flatPos - flatClosest;
+            Vector3 approachDir = (dirFromEdge.sqrMagnitude > 0.04f) ? dirFromEdge.normalized : toMe;
+            Vector3 spot = closest + approachDir * standOffset;
+            spot.y = transform.position.y;
+            return spot;
+        }
+
         public void AssignHarvestTask(RTSResourceSource source)
         {
             currentBuildingTask = null;
+            targetRetryCount = 0;
+            nextTargetRetryTime = 0f;
             currentResource = source;
             if (source != null)
             {
@@ -87,44 +176,36 @@ namespace CSE377.Gameplay
 
         public void AssignBuildTask(RTSBuilding building)
         {
+            if (building == null || building.isDestroyed || building.currentHp <= 0 || building.isConstructed)
+            {
+                CancelTask();
+                return;
+            }
+
             currentResource = null;
             currentBuildingTask = building;
-            if (building != null)
-            {
-                currentState = VillagerState.WalkingToBuild;
-                Collider bCol = building.GetComponent<Collider>();
-                Vector3 toMe = (transform.position - building.transform.position);
-                toMe.y = 0;
-                if (toMe.sqrMagnitude < 0.1f) toMe = Vector3.forward;
-                toMe.Normalize();
-
-                Vector3 buildSpot = (bCol != null) 
-                    ? bCol.ClosestPoint(transform.position) + toMe * 0.7f 
-                    : building.transform.position + toMe * 2.2f;
-
-                unit.MoveTo(buildSpot, isManual: false, forcedCrossingX: float.NaN, ignoreBuilding: building);
-            }
+            targetRetryCount = 0;
+            nextTargetRetryTime = Time.time + 0.8f;
+            currentState = VillagerState.WalkingToBuild;
+            Vector3 buildSpot = ComputeBuildingApproachSpot(building, 0.7f);
+            unit.MoveTo(buildSpot, isManual: false, forcedCrossingX: float.NaN, ignoreBuilding: building);
         }
 
         public void AssignRepairTask(RTSBuilding building)
         {
+            if (building == null || building.isDestroyed || building.currentHp <= 0 || !building.isConstructed || building.currentHp >= building.maxHp)
+            {
+                CancelTask();
+                return;
+            }
+
             currentResource = null;
             currentBuildingTask = building;
-            if (building != null)
-            {
-                currentState = VillagerState.WalkingToRepair;
-                Collider bCol = building.GetComponent<Collider>();
-                Vector3 toMe = (transform.position - building.transform.position);
-                toMe.y = 0;
-                if (toMe.sqrMagnitude < 0.1f) toMe = Vector3.forward;
-                toMe.Normalize();
-
-                Vector3 repairSpot = (bCol != null) 
-                    ? bCol.ClosestPoint(transform.position) + toMe * 0.7f 
-                    : building.transform.position + toMe * 2.2f;
-
-                unit.MoveTo(repairSpot, isManual: false, forcedCrossingX: float.NaN, ignoreBuilding: building);
-            }
+            targetRetryCount = 0;
+            nextTargetRetryTime = Time.time + 0.8f;
+            currentState = VillagerState.WalkingToRepair;
+            Vector3 repairSpot = ComputeBuildingApproachSpot(building, 0.7f);
+            unit.MoveTo(repairSpot, isManual: false, forcedCrossingX: float.NaN, ignoreBuilding: building);
         }
 
         /// <summary>
@@ -136,6 +217,9 @@ namespace CSE377.Gameplay
             currentState = VillagerState.Idle;
             currentResource = null;
             currentBuildingTask = null;
+            targetRetryCount = 0;
+            nextTargetRetryTime = 0f;
+            unit?.ClearIgnoreBuilding();
         }
 
         private void Update()
@@ -145,43 +229,74 @@ namespace CSE377.Gameplay
             switch (currentState)
             {
                 case VillagerState.WalkingToBuild:
-                    if (currentBuildingTask == null)
+                    if (currentBuildingTask == null || currentBuildingTask.isDestroyed || currentBuildingTask.currentHp <= 0 || currentBuildingTask.isConstructed)
                     {
+                        currentBuildingTask = null;
+                        if (unit != null && !unit.isManualMoveOrder) unit.StopMovementOrder();
                         currentState = VillagerState.Idle;
                         return;
                     }
 
-                    Collider bCol = currentBuildingTask.GetComponent<Collider>();
-                    float distToBuild = (bCol != null) 
-                        ? Vector3.Distance(transform.position, bCol.ClosestPoint(transform.position)) 
-                        : Vector3.Distance(transform.position, currentBuildingTask.transform.position);
+                    float distToBuild = GetHorizontalDistanceToBuilding(currentBuildingTask);
 
-                    // İnşaat menziline tam ulaşıldığında (en fazla 1.6m) doğrudan inşaat moduna geç
-                    if (distToBuild <= buildRange || (!unit.isMoving && distToBuild <= 2.2f))
+                    // İnşaat menziline ulaşıldığında veya kalabalıkken durup yeterli yakınlıkta kaldığında inşaata başla
+                    if (distToBuild <= buildRange || (!unit.isMoving && distToBuild <= 3.0f))
                     {
                         unit.StopMovementOrder();
                         currentState = VillagerState.Building;
+                        targetRetryCount = 0;
                         nextBuildFxTime = Time.time + 0.1f;
+                    }
+                    else if (!unit.isMoving && Time.time >= nextTargetRetryTime)
+                    {
+                        if (targetRetryCount < 3)
+                        {
+                            targetRetryCount++;
+                            nextTargetRetryTime = Time.time + 0.9f;
+                            Vector3 retrySpot = ComputeBuildingApproachSpot(currentBuildingTask, 0.7f);
+                            unit.MoveTo(retrySpot, isManual: false, forcedCrossingX: float.NaN, ignoreBuilding: currentBuildingTask);
+                        }
+                        else
+                        {
+                            CancelTask();
+                        }
                     }
                     break;
 
                 case VillagerState.Building:
-                    if (currentBuildingTask == null || currentBuildingTask.isConstructed)
+                    if (currentBuildingTask == null || currentBuildingTask.isDestroyed || currentBuildingTask.currentHp <= 0 || currentBuildingTask.isConstructed)
                     {
+                        currentBuildingTask = null;
+                        if (unit != null && !unit.isManualMoveOrder) unit.StopMovementOrder();
                         currentState = VillagerState.Idle;
                         return;
                     }
 
-                    // Binaya doğru dön
-                    Vector3 lookDir = (currentBuildingTask.transform.position - transform.position).normalized;
-                    lookDir.y = 0;
-                    if (lookDir != Vector3.zero)
+                    if (unit != null && !unit.isManualMoveOrder && (unit.isMoving || unit.commandDestination != Vector3.zero))
                     {
-                        transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(lookDir), Time.deltaTime * 10f);
+                        unit.StopMovementOrder();
                     }
 
-                    // İnşaat ilerlemesini artır (Saniyede %25)
-                    currentBuildingTask.AddConstructionProgress(25f * Time.deltaTime);
+                    // İtme/çarpışma sonucu binadan uzaklaştıysa tekrar yaklaş
+                    if (GetHorizontalDistanceToBuilding(currentBuildingTask) > 3.2f)
+                    {
+                        AssignBuildTask(currentBuildingTask);
+                        return;
+                    }
+
+                    // Binaya doğru dön
+                    Vector3 lookDir = currentBuildingTask.transform.position - transform.position;
+                    lookDir.y = 0f;
+                    if (lookDir.sqrMagnitude > 0.0001f)
+                    {
+                        transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(lookDir.normalized), Time.deltaTime * 10f);
+                    }
+
+                    // İnşaat ilerlemesini artır (Saniyede %25; ağdaki karşı oyuncuda sahibin paketi otoritedir)
+                    if (!IsRemoteNetworkVillager)
+                    {
+                        currentBuildingTask.AddConstructionProgress(25f * Time.deltaTime);
+                    }
                     unit?.AnimateWorkSwing(Time.time * 9.5f);
 
                     // Çekiç vurma efekti ve sesi
@@ -194,21 +309,21 @@ namespace CSE377.Gameplay
                     break;
 
                 case VillagerState.WalkingToRepair:
-                    if (currentBuildingTask == null || currentBuildingTask.currentHp <= 0 || currentBuildingTask.currentHp >= currentBuildingTask.maxHp)
+                    if (currentBuildingTask == null || currentBuildingTask.isDestroyed || currentBuildingTask.currentHp <= 0 || !currentBuildingTask.isConstructed || currentBuildingTask.currentHp >= currentBuildingTask.maxHp)
                     {
+                        currentBuildingTask = null;
+                        if (unit != null && !unit.isManualMoveOrder) unit.StopMovementOrder();
                         currentState = VillagerState.Idle;
                         return;
                     }
 
-                    Collider repCol = currentBuildingTask.GetComponent<Collider>();
-                    float distToRep = (repCol != null) 
-                        ? Vector3.Distance(transform.position, repCol.ClosestPoint(transform.position)) 
-                        : Vector3.Distance(transform.position, currentBuildingTask.transform.position);
+                    float distToRep = GetHorizontalDistanceToBuilding(currentBuildingTask);
 
-                    if (distToRep <= buildRange || (!unit.isMoving && distToRep <= 2.2f))
+                    if (distToRep <= buildRange || (!unit.isMoving && distToRep <= 3.0f))
                     {
                         unit.StopMovementOrder();
                         currentState = VillagerState.Repairing;
+                        targetRetryCount = 0;
                         nextBuildFxTime = Time.time + 0.1f;
 
                         Vector3 repLook = currentBuildingTask.transform.position - transform.position;
@@ -218,11 +333,27 @@ namespace CSE377.Gameplay
                             transform.rotation = Quaternion.LookRotation(repLook.normalized);
                         }
                     }
+                    else if (!unit.isMoving && Time.time >= nextTargetRetryTime)
+                    {
+                        if (targetRetryCount < 3)
+                        {
+                            targetRetryCount++;
+                            nextTargetRetryTime = Time.time + 0.9f;
+                            Vector3 retryRepSpot = ComputeBuildingApproachSpot(currentBuildingTask, 0.7f);
+                            unit.MoveTo(retryRepSpot, isManual: false, forcedCrossingX: float.NaN, ignoreBuilding: currentBuildingTask);
+                        }
+                        else
+                        {
+                            CancelTask();
+                        }
+                    }
                     break;
 
                 case VillagerState.Repairing:
-                    if (currentBuildingTask == null || currentBuildingTask.currentHp <= 0)
+                    if (currentBuildingTask == null || currentBuildingTask.isDestroyed || currentBuildingTask.currentHp <= 0)
                     {
+                        currentBuildingTask = null;
+                        if (unit != null && !unit.isManualMoveOrder) unit.StopMovementOrder();
                         currentState = VillagerState.Idle;
                         return;
                     }
@@ -231,8 +362,9 @@ namespace CSE377.Gameplay
                     {
                         currentBuildingTask.currentHp = currentBuildingTask.maxHp;
                         currentBuildingTask.CheckDamageVisualState();
+                        currentBuildingTask = null;
                         currentState = VillagerState.Idle;
-                        RTSHUDController.Instance?.SetAiStatus($"[TAMİRAT] \"{currentBuildingTask.displayName} tamamen onarıldı ve güçlendirildi!\"", Color.green);
+                        RTSHUDController.Instance?.SetAiStatus($"[TAMİRAT] Tamirat tamamlandı ve bina güçlendirildi!", Color.green);
                         return;
                     }
 
@@ -242,6 +374,12 @@ namespace CSE377.Gameplay
                         unit.StopMovementOrder();
                     }
 
+                    if (GetHorizontalDistanceToBuilding(currentBuildingTask) > 3.2f)
+                    {
+                        AssignRepairTask(currentBuildingTask);
+                        return;
+                    }
+
                     Vector3 repFace = currentBuildingTask.transform.position - transform.position;
                     repFace.y = 0f;
                     if (repFace.sqrMagnitude > 0.0001f)
@@ -249,9 +387,12 @@ namespace CSE377.Gameplay
                         transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(repFace.normalized), Time.deltaTime * 16f);
                     }
 
-                    currentBuildingTask.currentHp += Mathf.RoundToInt(40f * Time.deltaTime);
-                    currentBuildingTask.currentHp = Mathf.Min(currentBuildingTask.currentHp, currentBuildingTask.maxHp);
-                    currentBuildingTask.CheckDamageVisualState();
+                    if (!IsRemoteNetworkVillager)
+                    {
+                        currentBuildingTask.currentHp += Mathf.RoundToInt(40f * Time.deltaTime);
+                        currentBuildingTask.currentHp = Mathf.Min(currentBuildingTask.currentHp, currentBuildingTask.maxHp);
+                        currentBuildingTask.CheckDamageVisualState();
+                    }
                     unit?.AnimateWorkSwing(Time.time * 9.5f);
 
                     // Çekiç vurma efekti ve sesi
@@ -520,7 +661,7 @@ namespace CSE377.Gameplay
 
             foreach (var b in RTSBuilding.AllBuildings)
             {
-                if (b != null && b.team == myTeam && b.buildingType == RTSBuildingType.TownCenter && b.currentHp > 0)
+                if (b != null && !b.isDestroyed && b.isConstructed && b.team == myTeam && b.buildingType == RTSBuildingType.TownCenter && b.currentHp > 0)
                 {
                     float d = Vector3.Distance(transform.position, b.transform.position);
                     if (d < bestDist)

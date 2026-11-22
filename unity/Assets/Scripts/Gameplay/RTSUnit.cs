@@ -307,6 +307,11 @@ namespace CSE377.Gameplay
             stuckAccumulatedTime = 0f;
         }
 
+        public void ClearIgnoreBuilding()
+        {
+            currentIgnoreBuilding = null;
+        }
+
         private void FaceHorizontal(Vector3 worldPos)
         {
             Vector3 dir = worldPos - transform.position;
@@ -946,12 +951,13 @@ namespace CSE377.Gameplay
                                                 return;
                                             }
 
-                                            if (b != null && villager.currentBuildingTask == b &&
-                                                (villager.currentState == VillagerState.WalkingToBuild || villager.currentState == VillagerState.WalkingToRepair))
+                                            bool validBuildTarget = (villager.currentState == VillagerState.WalkingToBuild && !b.isConstructed);
+                                            bool validRepairTarget = (villager.currentState == VillagerState.WalkingToRepair && b.isConstructed && b.currentHp < b.maxHp);
+                                            if (b != null && !b.isDestroyed && b.currentHp > 0 && villager.currentBuildingTask == b && (validBuildTarget || validRepairTarget))
                                             {
                                                 // Köylü inşa/tamir edeceği binanın sınırına ulaştı! Doğrudan çalışmaya başlasın
                                                 StopMovementOrder();
-                                                villager.currentState = (villager.currentState == VillagerState.WalkingToRepair)
+                                                villager.currentState = validRepairTarget
                                                     ? VillagerState.Repairing
                                                     : VillagerState.Building;
                                                 FaceHorizontal(b.transform.position);
@@ -1105,14 +1111,22 @@ namespace CSE377.Gameplay
                             if (stuckAccumulatedTime >= 3.6f)
                             {
                                 var v = GetComponent<RTSVillager>();
-                                if (v != null && v.currentState == VillagerState.WalkingToBuild && v.currentBuildingTask != null)
+                                if (v != null &&
+                                    v.currentState == VillagerState.WalkingToBuild &&
+                                    v.currentBuildingTask != null &&
+                                    !v.currentBuildingTask.isDestroyed &&
+                                    v.currentBuildingTask.currentHp > 0 &&
+                                    !v.currentBuildingTask.isConstructed)
                                 {
                                     Collider bCol = v.currentBuildingTask.GetComponent<Collider>();
-                                    float distToBld = (bCol != null) 
-                                        ? Vector3.Distance(transform.position, bCol.ClosestPoint(transform.position)) 
-                                        : Vector3.Distance(transform.position, v.currentBuildingTask.transform.position);
+                                    Vector3 closest = (bCol != null)
+                                        ? bCol.ClosestPoint(transform.position)
+                                        : v.currentBuildingTask.transform.position;
+                                    float distToBld = Vector2.Distance(
+                                        new Vector2(transform.position.x, transform.position.z),
+                                        new Vector2(closest.x, closest.z));
 
-                                    if (distToBld <= 2.2f)
+                                    if (distToBld <= 2.8f)
                                     {
                                         StopMovementOrder();
                                         v.currentState = VillagerState.Building;
@@ -1120,9 +1134,8 @@ namespace CSE377.Gameplay
                                     }
                                 }
 
-                                isMoving = false;
+                                StopMovementOrder();
                                 isManualMoveOrder = false;
-                                stuckAccumulatedTime = 0f;
                             }
                         }
                         else

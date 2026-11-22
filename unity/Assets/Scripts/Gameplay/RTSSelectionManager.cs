@@ -463,35 +463,35 @@ namespace CSE377.Gameplay
             RTSNetworkSyncManager.Instance?.BroadcastBuildingSpawn(placingType, placePosition, myTeam, false, placingRotationY);
 
             // Seçili köylüleri inşaata gönder
-            bool assignedVillager = false;
+            var assignedVillagers = new List<RTSUnit>();
             foreach (var u in selectedUnits)
             {
-                if (u != null && u.team == myTeam)
+                if (u != null && u.team == myTeam && !u.isDead && u.currentHp > 0)
                 {
                     var villager = u.GetComponent<RTSVillager>();
                     if (villager != null)
                     {
                         villager.AssignBuildTask(building);
-                        assignedVillager = true;
+                        assignedVillagers.Add(u);
                     }
                 }
             }
 
-            // Eğer seçili köylü yoksa sahadan kendi takımına ait bir köylü bulup görevlendir
-            if (!assignedVillager)
+            // Eğer seçili köylü yoksa önce boşta (Idle), yoksa en uygun köylüyü bulup görevlendir
+            if (assignedVillagers.Count == 0)
             {
-                foreach (var u in RTSUnit.AllUnits)
+                var bestBuilder = RTSVillager.FindBestBuilderFor(myTeam, placePosition);
+                if (bestBuilder != null)
                 {
-                    if (u != null && u.team == myTeam && u.currentHp > 0)
-                    {
-                        var v = u.GetComponent<RTSVillager>();
-                        if (v != null)
-                        {
-                            v.AssignBuildTask(building);
-                            break;
-                        }
-                    }
+                    bestBuilder.AssignBuildTask(building);
+                    var bUnit = bestBuilder.GetComponent<RTSUnit>();
+                    if (bUnit != null) assignedVillagers.Add(bUnit);
                 }
+            }
+
+            if (assignedVillagers.Count > 0)
+            {
+                RTSNetworkSyncManager.Instance?.BroadcastVillagerOrder(assignedVillagers, placePosition, "BUILD");
             }
 
             SpawnClickFeedback(placePosition, Color.yellow);
@@ -814,6 +814,8 @@ namespace CSE377.Gameplay
 
         public void SelectBuilding(RTSBuilding building)
         {
+            if (building == null || building.isDestroyed || building.currentHp <= 0) return;
+
             DeselectAllUnits();
             inspectedEnemyUnit = null;
             inspectedEnemyBuilding = null;
@@ -821,7 +823,11 @@ namespace CSE377.Gameplay
 
             if (RTSHUDController.Instance != null)
             {
-                if (building.buildingType == RTSBuildingType.Barracks)
+                if (!building.isConstructed)
+                {
+                    RTSHUDController.Instance.ShowUnderConstructionMenu(building);
+                }
+                else if (building.buildingType == RTSBuildingType.Barracks)
                 {
                     RTSHUDController.Instance.ShowBarracksMenu(building);
                 }
@@ -1058,19 +1064,24 @@ namespace CSE377.Gameplay
 
                 // 2. Hedef inşa halindeki bir bina mı? (Foundation)
                 var buildingTarget = hasPhysicalHit ? hit.collider.GetComponentInParent<RTSBuilding>() : null;
+                if (buildingTarget != null && (buildingTarget.isDestroyed || buildingTarget.currentHp <= 0))
+                {
+                    buildingTarget = null;
+                }
                 if ((buildingTarget == null || buildingTarget.isConstructed || buildingTarget.team != myTeam) &&
+                    !isGroundHit &&
                     selectedUnits.Exists(u => u != null && u.GetComponent<RTSVillager>() != null))
                 {
-                    float searchRadius = 5.0f;
+                    float searchRadius = 1.5f;
                     RTSBuilding bestBld = null;
                     float bestDist = searchRadius;
 
                     foreach (var b in RTSBuilding.AllBuildings)
                     {
-                        if (b != null && !b.isConstructed && b.team == myTeam)
+                        if (b != null && !b.isDestroyed && b.currentHp > 0 && !b.isConstructed && b.team == myTeam)
                         {
                             Collider bc = b.GetComponent<Collider>();
-                            float d = (bc != null) 
+                            float d = (bc != null)
                                 ? Vector3.Distance(clickWorldPos, bc.ClosestPoint(clickWorldPos))
                                 : Vector3.Distance(new Vector3(clickWorldPos.x, 0, clickWorldPos.z), new Vector3(b.transform.position.x, 0, b.transform.position.z));
 
@@ -1088,7 +1099,7 @@ namespace CSE377.Gameplay
                     }
                 }
 
-                if (buildingTarget != null && !buildingTarget.isConstructed && buildingTarget.team == myTeam)
+                if (buildingTarget != null && !buildingTarget.isDestroyed && buildingTarget.currentHp > 0 && !buildingTarget.isConstructed && buildingTarget.team == myTeam)
                 {
                     bool assignedVillager = false;
                     foreach (var u in selectedUnits)
@@ -1487,8 +1498,8 @@ namespace CSE377.Gameplay
                 SelectNextIdleVillager();
             }
 
-            // Seçili bina klavye kısayolları (Şehir Merkezi seçiliyken Q ile Köylü; Kışla seçiliyken 1..5 ile asker basma)
-            if (selectedBuilding != null && selectedBuilding.team == RTSGameManager.LocalPlayerTeam)
+            // Seçili bina klavye kısayolları (Yalnızca inşaatı tamamlanmış binalarda Q ile Köylü, 1..5 ile asker basma)
+            if (selectedBuilding != null && selectedBuilding.isConstructed && !selectedBuilding.isDestroyed && selectedBuilding.currentHp > 0 && selectedBuilding.team == RTSGameManager.LocalPlayerTeam)
             {
                 Vector3 fwd = (Vector3.zero - selectedBuilding.transform.position);
                 fwd.y = 0f;

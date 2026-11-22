@@ -2337,6 +2337,27 @@ namespace CSE377.Gameplay
             }
         }
 
+        public void ShowUnderConstructionMenu(RTSBuilding building)
+        {
+            if (bottomActionPanel == null || building == null) return;
+            bottomActionPanel.SetActive(true);
+
+            if (actionPanelTitle != null)
+            {
+                actionPanelTitle.text = $"{building.displayName.ToUpper()} - İNŞAAT HALİNDE (%{building.constructionProgress:F0})";
+            }
+
+            SetupActionButton(actionBtn1, actionBtn1Text, "İnşaatı İptal Et\n(Kaynak İadesi)", true, () =>
+            {
+                building.CancelConstruction();
+            });
+
+            SetupActionButton(actionBtn2, actionBtn2Text, "", false, null);
+            SetupActionButton(actionBtn3, actionBtn3Text, "", false, null);
+            SetupActionButton(actionBtn4, actionBtn4Text, "", false, null);
+            SetupActionButton(actionBtn5, actionBtn5Text, "", false, null);
+        }
+
         public void ShowVillagerBuildMenu()
         {
             if (bottomActionPanel == null) return;

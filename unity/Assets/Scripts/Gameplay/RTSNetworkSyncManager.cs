@@ -1601,8 +1601,10 @@ namespace CSE377.Gameplay
                             float minD = 12f;
                             foreach (var b in RTSBuilding.AllBuildings)
                             {
-                                if (b != null && b.team == senderTeam && b.currentHp > 0)
+                                if (b != null && !b.isDestroyed && b.team == senderTeam && b.currentHp > 0)
                                 {
+                                    if (kind == "BUILD" && b.isConstructed) continue;
+                                    if (kind == "REPAIR" && (!b.isConstructed || b.currentHp >= b.maxHp)) continue;
                                     float d = Vector3.Distance(new Vector3(b.transform.position.x, 0f, b.transform.position.z), targetPos);
                                     if (d < minD) { minD = d; targetBld = b; }
                                 }
@@ -1791,25 +1793,8 @@ namespace CSE377.Gameplay
 
         private void AssignRemoteVillagerToBuild(UnitTeam remoteTeam, RTSBuilding bld)
         {
-            if (bld == null) return;
-            RTSVillager bestVil = null;
-            float bestDist = float.MaxValue;
-            foreach (var u in RTSUnit.AllUnits)
-            {
-                if (u != null && u.team == remoteTeam && u.unitType.ToLower() == "villager" && u.currentHp > 0)
-                {
-                    var v = u.GetComponent<RTSVillager>();
-                    if (v != null)
-                    {
-                        float d = Vector3.Distance(u.transform.position, bld.transform.position);
-                        if (d < bestDist)
-                        {
-                            bestDist = d;
-                            bestVil = v;
-                        }
-                    }
-                }
-            }
+            if (bld == null || bld.isDestroyed || bld.currentHp <= 0 || bld.isConstructed) return;
+            RTSVillager bestVil = RTSVillager.FindBestBuilderFor(remoteTeam, bld.transform.position);
             if (bestVil != null)
             {
                 bestVil.AssignBuildTask(bld);
@@ -1883,6 +1868,27 @@ namespace CSE377.Gameplay
                                 match.transform.position = Vector3.Lerp(match.transform.position, new Vector3(px, match.transform.position.y, pz), 0.6f);
                                 match.transform.rotation = Quaternion.Euler(0f, rotY, 0f);
                             }
+
+                            var vil = match.GetComponent<RTSVillager>();
+                            if (vil != null && !isMov &&
+                                (vil.currentState == VillagerState.WalkingToBuild || vil.currentState == VillagerState.WalkingToRepair ||
+                                 vil.currentState == VillagerState.Building || vil.currentState == VillagerState.Repairing))
+                            {
+                                if (vil.currentBuildingTask == null || vil.currentBuildingTask.isDestroyed || vil.currentBuildingTask.currentHp <= 0)
+                                {
+                                    vil.CancelTask();
+                                }
+                                else
+                                {
+                                    Collider bCol = vil.currentBuildingTask.GetComponent<Collider>();
+                                    Vector3 bPoint = (bCol != null) ? bCol.ClosestPoint(match.transform.position) : vil.currentBuildingTask.transform.position;
+                                    float bDist = Vector2.Distance(new Vector2(match.transform.position.x, match.transform.position.z), new Vector2(bPoint.x, bPoint.z));
+                                    if (bDist > 3.2f)
+                                    {
+                                        vil.CancelTask();
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1947,9 +1953,9 @@ namespace CSE377.Gameplay
                             {
                                 bestBld.AddConstructionProgress(100f);
                             }
-                            else if (!bestBld.isConstructed && prog > bestBld.constructionProgress)
+                            else if (!bestBld.isConstructed && Mathf.Abs(prog - bestBld.constructionProgress) > 0.5f)
                             {
-                                bestBld.AddConstructionProgress(prog - bestBld.constructionProgress);
+                                bestBld.SetNetworkConstructionProgress(prog);
                             }
                             if (hp < bestBld.currentHp)
                             {
