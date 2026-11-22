@@ -150,6 +150,7 @@ namespace CSE377.Gameplay
         public Text startScreenAudioBtnText;
         public Button startScreenModeBtn;
         public Text startScreenModeBtnText;
+        public Button startScreenQuitBtn;
 
         [Header("Çok Oyunculu Photon Oda Lobisi Modalı (Multiplayer Lobby Modal)")]
         public GameObject multiplayerLobbyModal;
@@ -823,8 +824,24 @@ namespace CSE377.Gameplay
                 pauseMainMenuBtn.onClick.AddListener(ReturnToMainMenu);
             }
 
+            if (startScreenQuitBtn != null)
+            {
+                startScreenQuitBtn.onClick.RemoveAllListeners();
+                startScreenQuitBtn.onClick.AddListener(QuitGame);
+            }
+
             HideActionPanel();
             if (inspectorPanel != null) inspectorPanel.SetActive(false);
+        }
+
+        public void QuitGame()
+        {
+            RTSAudioManager.Instance?.PlaySound(RTSSoundType.Click);
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+            Application.Quit();
+#endif
         }
 
         private void UpdateDifficultyButtonText()

@@ -2537,27 +2537,32 @@ namespace CSE377.Gameplay
             rightBorder.effectColor = new Color(0.55f, 0.45f, 0.25f, 0.55f);
             rightBorder.effectDistance = new Vector2(1.2f, -1.2f);
 
-            CreateUIText(rightCol.transform, "ColHeader2", "⚜️  SEFER KOMUTANLIĞI & OYUN MODU", 12, new Color(1f, 0.88f, 0.42f), medievalTitleFont, new Vector2(0.5f, 0.93f), new Vector2(350, 22)).fontStyle = FontStyle.Bold;
+            CreateUIText(rightCol.transform, "ColHeader2", "⚜️  SEFER KOMUTANLIĞI & OYUN MODU", 12, new Color(1f, 0.88f, 0.42f), medievalTitleFont, new Vector2(0.5f, 0.94f), new Vector2(350, 20)).fontStyle = FontStyle.Bold;
 
             // 1. TEK OYUNCULU SEFERİ BAŞLAT BUTONU (PRIMARY CTA - Zümrüt & Altın Yaldızlı Mühür Buton)
-            var playBtn = CreateUITexturedButton(rightCol.transform, "PlayBtn", "⚔️  SEFERİ BAŞLAT  ⚔️", btnGreenTex, medievalTitleFont, new Vector2(0.5f, 0.76f), new Vector2(346, 60), new Color(0.10f, 0.50f, 0.22f));
+            var playBtn = CreateUITexturedButton(rightCol.transform, "PlayBtn", "⚔️  SEFERİ BAŞLAT  ⚔️", btnGreenTex, medievalTitleFont, new Vector2(0.5f, 0.79f), new Vector2(346, 54), new Color(0.10f, 0.50f, 0.22f));
             var playTxt = playBtn.GetComponentInChildren<Text>();
             if (playTxt != null) { playTxt.fontSize = 18; playTxt.fontStyle = FontStyle.Bold; playTxt.color = Color.white; }
 
             // 2. ÇOK OYUNCULU SEÇENEĞİ BUTONU (Tıklandığında ayrı Çok Oyunculu Oda Lobisi Modalını açar)
-            var modeBtn = CreateUITexturedButton(rightCol.transform, "MultiplayerOpenBtn", "🌐  ÇOK OYUNCULU (2 KİŞİLİK ODA)", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.53f), new Vector2(346, 48), new Color(0.14f, 0.28f, 0.48f));
+            var modeBtn = CreateUITexturedButton(rightCol.transform, "MultiplayerOpenBtn", "🌐  ÇOK OYUNCULU (2 KİŞİLİK ODA)", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.61f), new Vector2(346, 42), new Color(0.14f, 0.28f, 0.48f));
             var modeBtnTxt = modeBtn.GetComponentInChildren<Text>();
             if (modeBtnTxt != null) { modeBtnTxt.fontSize = 14; modeBtnTxt.fontStyle = FontStyle.Bold; modeBtnTxt.color = new Color(1f, 0.94f, 0.70f); }
 
             // 3. NASIL OYNANIR & KISAYOLLAR
-            var guideBtn = CreateUITexturedButton(rightCol.transform, "GuideBtn", "📜  NASIL OYNANIR & KISAYOLLAR", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.33f), new Vector2(346, 44), new Color(0.20f, 0.18f, 0.16f));
+            var guideBtn = CreateUITexturedButton(rightCol.transform, "GuideBtn", "📜  NASIL OYNANIR & KISAYOLLAR", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.45f), new Vector2(346, 40), new Color(0.20f, 0.18f, 0.16f));
             var guideBtnTxt = guideBtn.GetComponentInChildren<Text>();
             if (guideBtnTxt != null) { guideBtnTxt.fontSize = 13; guideBtnTxt.fontStyle = FontStyle.Bold; guideBtnTxt.color = Color.white; }
 
             // 4. SES & MÜZİK AYARLARI
-            var audioBtn = CreateUITexturedButton(rightCol.transform, "AudioBtn", "⚙️  SES & MÜZİK AYARLARI", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.14f), new Vector2(346, 44), new Color(0.16f, 0.22f, 0.32f));
+            var audioBtn = CreateUITexturedButton(rightCol.transform, "AudioBtn", "⚙️  SES & MÜZİK AYARLARI", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.29f), new Vector2(346, 40), new Color(0.16f, 0.22f, 0.32f));
             var audioBtnTxt = audioBtn.GetComponentInChildren<Text>();
             if (audioBtnTxt != null) { audioBtnTxt.fontSize = 13; audioBtnTxt.fontStyle = FontStyle.Bold; audioBtnTxt.color = Color.white; }
+
+            // 5. OYUNDAN ÇIK
+            var quitBtn = CreateUITexturedButton(rightCol.transform, "QuitGameBtn", "🚪  OYUNDAN ÇIK", btnDarkTex, medievalTitleFont, new Vector2(0.5f, 0.12f), new Vector2(346, 42), new Color(0.45f, 0.13f, 0.14f));
+            var quitBtnTxt = quitBtn.GetComponentInChildren<Text>();
+            if (quitBtnTxt != null) { quitBtnTxt.fontSize = 13; quitBtnTxt.fontStyle = FontStyle.Bold; quitBtnTxt.color = new Color(1f, 0.85f, 0.85f); }
 
             // --- 7.5 ÇOK OYUNCULU PHOTON ODA LİSTESİ MODALI (Yalnızca "ÇOK OYUNCULU" seçeneğine girince açılır) ---
             var mpModal = CreateUIPanel(canvasGo.transform, "MultiplayerLobby_Modal", new Vector2(0, 0), new Vector2(1, 1), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, new Color(0.015f, 0.02f, 0.03f, 1.0f));
@@ -2724,6 +2729,7 @@ namespace CSE377.Gameplay
             hud.startScreenAudioBtnText = audioBtn.GetComponentInChildren<Text>();
             hud.startScreenModeBtn = modeBtn;
             hud.startScreenModeBtnText = modeBtnTxt;
+            hud.startScreenQuitBtn = quitBtn;
             hud.multiplayerLobbyModal = mpModal;
             hud.mpPlayerNameInput = playerNameInput;
             hud.startScreenRoomInput = roomInput;
