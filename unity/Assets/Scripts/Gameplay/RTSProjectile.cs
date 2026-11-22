@@ -31,6 +31,35 @@ namespace CSE377.Gameplay
         private float travelProgress = 0f;
         private float totalDistance = 1f;
         private Vector3 tumbleAxis;
+        private Renderer[] cachedRenderers;
+        private bool isFogVisible = true;
+
+        private void Awake()
+        {
+            cachedRenderers = GetComponentsInChildren<Renderer>(true);
+        }
+
+        private void UpdateFogVisibility()
+        {
+            if (team == RTSGameManager.LocalPlayerTeam || RTSFogOfWarManager.Instance == null)
+            {
+                SetRenderersVisible(true);
+                return;
+            }
+            bool visibleNow = RTSFogOfWarManager.Instance.IsPositionInPlayerVision(transform.position);
+            SetRenderersVisible(visibleNow);
+        }
+
+        private void SetRenderersVisible(bool vis)
+        {
+            if (isFogVisible == vis) return;
+            isFogVisible = vis;
+            if (cachedRenderers == null) cachedRenderers = GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < cachedRenderers.Length; i++)
+            {
+                if (cachedRenderers[i] != null) cachedRenderers[i].enabled = vis;
+            }
+        }
 
         public static void FireArrow(Vector3 fromPos, RTSUnit target, int dmg, RTSUnit source, UnitTeam firingTeam = UnitTeam.Player)
         {
@@ -192,6 +221,7 @@ namespace CSE377.Gameplay
 
             previousPosition = transform.position;
             transform.position = currentPos;
+            UpdateFogVisibility();
         }
 
         private void HitTarget()

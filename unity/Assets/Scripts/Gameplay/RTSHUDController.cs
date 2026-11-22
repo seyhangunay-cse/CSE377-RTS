@@ -1259,17 +1259,33 @@ namespace CSE377.Gameplay
         }
 
         private float nextAiIntelPreviewTime = 0f;
+        private float nextProactiveTipCheckTime = 16f;
+        private string lastProactiveAlertKey = "";
 
         private void UpdateAiLiveIntelPreview(bool force = false)
         {
-            if (aiLiveIntelText == null || aiCommanderPanel == null || !aiCommanderPanel.activeSelf) return;
-            if (!force && Time.unscaledTime < nextAiIntelPreviewTime) return;
-            nextAiIntelPreviewTime = Time.unscaledTime + 0.8f;
-
             if (gameManager == null) gameManager = RTSGameManager.Instance;
-            if (gameManager != null)
+            if (gameManager == null) return;
+
+            if (aiLiveIntelText != null && aiCommanderPanel != null && aiCommanderPanel.activeSelf)
             {
-                aiLiveIntelText.text = RTSAiAdvisor.BuildCompactHudIntelLine(gameManager.GenerateLiveSnapshot());
+                if (force || Time.unscaledTime >= nextAiIntelPreviewTime)
+                {
+                    nextAiIntelPreviewTime = Time.unscaledTime + 0.8f;
+                    aiLiveIntelText.text = RTSAiAdvisor.BuildCompactHudIntelLine(gameManager.GenerateLiveSnapshot());
+                }
+            }
+
+            if (Time.timeScale > 0f && !gameManager.isGameOver && (startScreenModal == null || !startScreenModal.activeSelf)
+                && Time.unscaledTime >= nextProactiveTipCheckTime)
+            {
+                nextProactiveTipCheckTime = Time.unscaledTime + 18f;
+                var snap = gameManager.GenerateLiveSnapshot();
+                if (RTSAiAdvisor.TryBuildProactiveTip(snap, out string key, out string tip) && key != lastProactiveAlertKey)
+                {
+                    lastProactiveAlertKey = key;
+                    SetAiStatus(tip, new Color(0.55f, 0.92f, 1.0f));
+                }
             }
         }
 

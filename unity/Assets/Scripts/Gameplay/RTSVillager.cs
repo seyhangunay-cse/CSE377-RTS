@@ -475,10 +475,18 @@ namespace CSE377.Gameplay
             RTSResourceSource bestAnyType = null;
             float bestAnyDist = float.MaxValue;
 
+            UnitTeam myTeam = (unit != null) ? unit.team : RTSGameManager.LocalPlayerTeam;
             for (int i = 0; i < RTSResourceSource.AllSources.Count; i++)
             {
                 var src = RTSResourceSource.AllSources[i];
                 if (src == null || src == currentResource || src.remainingAmount <= 0) continue;
+
+                // Yerel oyuncunun köylüsü tükenen kaynaktan sadece keşfedilmiş (sis dışı) alternatiflere otomatik geçer
+                if (myTeam == RTSGameManager.LocalPlayerTeam && RTSFogOfWarManager.Instance != null)
+                {
+                    if (RTSFogOfWarManager.Instance.GetCellStateAtWorldPos(src.transform.position) == FogCellState.Unexplored)
+                        continue;
+                }
 
                 float d = Vector3.Distance(transform.position, src.transform.position);
                 if (d > maxRadius) continue;

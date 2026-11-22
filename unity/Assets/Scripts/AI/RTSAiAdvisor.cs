@@ -468,6 +468,58 @@ namespace CSE377.AI
             return $"Sis Açık: %{exp} | {enemyBrief}\nİşçiler ({w.total}): {w.food}🌾 {w.wood}🪵 {w.gold}🪙 {w.idle}💤 → ODAK: {eco.focusResourceTr}";
         }
 
+        public static bool TryBuildProactiveTip(AiSafeSnapshot snap, out string alertKey, out string tipTr)
+        {
+            alertKey = "";
+            tipTr = "";
+            if (snap == null) return false;
+
+            var pop = snap.population ?? new AiSafeSnapshot.PopulationState();
+            var w = snap.workers ?? new AiSafeSnapshot.WorkerAllocationState();
+            var res = snap.resources ?? new AiSafeSnapshot.ResourceState();
+            var fog = snap.fog_intel;
+            int mil = GetMilitaryTotal(snap);
+            var enemy = AnalyzeEnemyIntel(snap);
+            var eco = AnalyzeEconomy(snap);
+
+            if (pop.current >= pop.max && pop.max < 60)
+            {
+                alertKey = $"POP_FULL_{pop.max}";
+                tipTr = $"[AI DANIŞMAN] Nüfus tavanı dolu ({pop.current}/{pop.max})! Yeni birlik basmak için Ev (30 Odun) inşa edin.";
+                return true;
+            }
+
+            if (fog != null && fog.seconds_until_next_raid > 0 && fog.seconds_until_next_raid <= 40 && mil < 4)
+            {
+                alertKey = $"RAID_SOON_{fog.seconds_until_next_raid / 15}";
+                tipTr = $"[AI DANIŞMAN] Akına {fog.seconds_until_next_raid}sn kaldı ve sadece {mil} askeriniz var! {TranslateUnitTr(enemy.recommendedCounter)} / Kule hazırlayın.";
+                return true;
+            }
+
+            if (enemy.hasLiveSighting)
+            {
+                alertKey = $"LIVE_ENEMY_{enemy.dominantEnemyClass}_{enemy.primaryThreatZone}";
+                tipTr = $"[AI DANIŞMAN] {TranslateZoneTr(enemy.primaryThreatZone)} yönünde {TranslateEnemyClassTr(enemy.dominantEnemyClass)} görüldü → Önerilen karşıt: {TranslateUnitTr(enemy.recommendedCounter)}.";
+                return true;
+            }
+
+            if (w.idle >= 2)
+            {
+                alertKey = $"IDLE_WORKERS_{w.idle}_{eco.focusResource}";
+                tipTr = $"[AI DANIŞMAN] {w.idle} köylü boşta bekliyor [F4]! Öncelikli kaynak odağınız: {eco.focusResourceTr}.";
+                return true;
+            }
+
+            if (w.total > 0 && ((w.food == 0 && res.food < 100) || (w.wood == 0 && res.wood < 100) || (w.gold == 0 && res.gold < 75)))
+            {
+                alertKey = $"ECO_BOTTLENECK_{eco.focusResource}";
+                tipTr = $"[AI DANIŞMAN] Kaynak dengesizliği: ODAK → {eco.focusResourceTr} (Stok: {res.wood}O / {res.food}G / {res.gold}A).";
+                return true;
+            }
+
+            return false;
+        }
+
         public static RTSActionPlan BuildIntelligentPlan(string userPrompt, AiSafeSnapshot snapshot)
         {
             if (snapshot == null) snapshot = AiSafeSnapshot.CreateMockSnapshot();

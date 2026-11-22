@@ -40,6 +40,9 @@ namespace CSE377.Gameplay
 
         private float lastClickTime = -999f;
         private string lastClickedUnitType = "";
+        private readonly Dictionary<int, List<RTSUnit>> controlGroups = new Dictionary<int, List<RTSUnit>>();
+        private int lastGroupPressed = -1;
+        private float lastGroupPressTime = -999f;
 
         private void Awake()
         {
@@ -1406,17 +1409,66 @@ namespace CSE377.Gameplay
                     var lead = combatUnits.Find(u => u.unitType == "cavalry" || u.unitType == "scout") ?? combatUnits[0];
                     RTSAudioManager.Instance?.PlayUnitVoice(lead.unitType, "attack", force: true);
 
-                    DistributeMoveOrder(targetPos);
-                    RTSHUDController.Instance?.SetAiStatus($"[F1 TAARRUZ YÜRÜYÜŞÜ] {combatUnits.Count} muharip birliğimiz taarruza geçti!", Color.red);
+                    DistributeMoveOrder(targetPos, isManualMove: false);
+                    RTSHUDController.Instance?.SetAiStatus($"[F1 TAARRUZ YÜRÜYÜŞÜ] {combatUnits.Count} muharip birlik görüşe giren düşmanla savaşarak ilerliyor!", Color.red);
                 }
             }
         }
 
         /// <summary>
-        /// Tüm askerleri, tüm köylüleri veya boştaki işçileri seçen klavye kısayolları.
+        /// Tüm askerleri, tüm köylüleri, boştaki işçileri ve Ctrl+1..5 / 1..5 kontrol gruplarını seçen klavye kısayolları.
         /// </summary>
         private void HandleSelectionHotkeys()
         {
+            // Metin girişi aktifken kısayol tuşları yazıyı bölmesin
+            var currentSelGo = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
+            if (currentSelGo != null && currentSelGo.GetComponent<UnityEngine.UI.InputField>() != null)
+            {
+                return;
+            }
+
+            bool ctrlHeld = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+            KeyCode[] numKeys = { KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3, KeyCode.Alpha4, KeyCode.Alpha5 };
+            for (int g = 0; g < numKeys.Length; g++)
+            {
+                int groupIdx = g + 1;
+                if (Input.GetKeyDown(numKeys[g]))
+                {
+                    if (ctrlHeld && selectedUnits.Count > 0)
+                    {
+                        var list = new List<RTSUnit>();
+                        foreach (var u in selectedUnits)
+                        {
+                            if (u != null && u.currentHp > 0 && !u.isDead) list.Add(u);
+                        }
+                        if (list.Count > 0)
+                        {
+                            controlGroups[groupIdx] = list;
+                            RTSHUDController.Instance?.SetAiStatus($"[GRUP {groupIdx}] {list.Count} birlik kontrol grubuna atandı!", Color.cyan);
+                        }
+                        return;
+                    }
+                    else if (!ctrlHeld && selectedBuilding == null && controlGroups.TryGetValue(groupIdx, out var grp) && grp != null)
+                    {
+                        grp.RemoveAll(u => u == null || u.currentHp <= 0 || u.isDead);
+                        if (grp.Count > 0)
+                        {
+                            bool doubleTap = (lastGroupPressed == groupIdx && (Time.unscaledTime - lastGroupPressTime) < 0.40f);
+                            lastGroupPressed = groupIdx;
+                            lastGroupPressTime = Time.unscaledTime;
+
+                            DeselectAll();
+                            foreach (var u in grp) SelectUnit(u);
+                            RTSAudioManager.Instance?.PlaySound(RTSSoundType.UnitSelect);
+                            if (doubleTap)
+                            {
+                                Camera.main?.GetComponent<RTSCameraController>()?.FocusOnWorldPosition(grp[0].transform.position);
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
             // F2 veya Tab: Tüm Askerleri Seç (Select All Military)
             if (Input.GetKeyDown(KeyCode.F2) || Input.GetKeyDown(KeyCode.Tab))
             {
@@ -1533,13 +1585,13 @@ namespace CSE377.Gameplay
             RTSHUDController.Instance?.SetAiStatus("[İŞÇİ RAPORU] Tüm köylüleriniz aktif çalışıyor! Boşta kalan işçi yok.", Color.green);
         }
 
-        public void DistributeMoveOrder(Vector3 centerDestination)
+        public void DistributeMoveOrder(Vector3 centerDestination, bool isManualMove = true)
         {
             selectedUnits.RemoveAll(u => u == null || u.currentHp <= 0);
             int count = selectedUnits.Count;
             if (count == 0) return;
 
-            Debug.Log($"[RTSSelectionManager] {count} birime taktiksel ordu formasyonu intikal emri verildi -> {centerDestination}");
+            Debug.Log($"[RTSSelectionManager] {count} birime taktiksel ordu formasyonu intikal emri verildi (Manual={isManualMove}) -> {centerDestination}");
 
             var netMoves = new List<(RTSUnit unit, Vector3 dest)>();
 
@@ -1547,7 +1599,7 @@ namespace CSE377.Gameplay
             {
                 netMoves.Add((selectedUnits[0], centerDestination));
                 RTSNetworkSyncManager.Instance?.BroadcastMoveOrders(netMoves);
-                selectedUnits[0].MoveTo(centerDestination, isManual: true);
+                selectedUnits[0].MoveTo(centerDestination, isManual: isManualMove);
                 return;
             }
 
@@ -1592,21 +1644,21 @@ namespace CSE377.Gameplay
             // 1. Kademe: Ön Hat (Piyadeler)
             if (frontline.Count > 0)
             {
-                AssignRankFormation(frontline, centerDestination, marchDir, rightDir, currentRow, spacingX, spacingZ, netMoves);
+                AssignRankFormation(frontline, centerDestination, marchDir, rightDir, currentRow, spacingX, spacingZ, netMoves, isManualMove);
                 currentRow += Mathf.CeilToInt((float)frontline.Count / 6);
             }
 
             // 2. Kademe: Arka Hat (Okçular - Piyadelerin hemen arkasında korumalı ateş hattı)
             if (backline.Count > 0)
             {
-                AssignRankFormation(backline, centerDestination, marchDir, rightDir, currentRow, spacingX, spacingZ, netMoves);
+                AssignRankFormation(backline, centerDestination, marchDir, rightDir, currentRow, spacingX, spacingZ, netMoves, isManualMove);
                 currentRow += Mathf.CeilToInt((float)backline.Count / 6);
             }
 
             // 3. Kademe: Kuşatma & Destek (Mancınıklar ve Köylüler - En geride güvenli merkez)
             if (support.Count > 0)
             {
-                AssignRankFormation(support, centerDestination, marchDir, rightDir, currentRow, spacingX + 0.8f, spacingZ + 0.8f, netMoves);
+                AssignRankFormation(support, centerDestination, marchDir, rightDir, currentRow, spacingX + 0.8f, spacingZ + 0.8f, netMoves, isManualMove);
             }
 
             // 4. Kademe: Yan Kanatlar (Süvariler - Ordunun sol ve sağ kanatlarında hücum düzeni)
@@ -1622,14 +1674,14 @@ namespace CSE377.Gameplay
 
                     Vector3 flankDest = centerDestination + rightDir * lateralOffset - marchDir * depthOffset;
                     netMoves.Add((flanks[i], flankDest));
-                    flanks[i].MoveTo(flankDest, isManual: true);
+                    flanks[i].MoveTo(flankDest, isManual: isManualMove);
                 }
             }
 
             RTSNetworkSyncManager.Instance?.BroadcastMoveOrders(netMoves);
         }
 
-        private void AssignRankFormation(List<RTSUnit> units, Vector3 center, Vector3 forward, Vector3 right, int rankIndex, float spX, float spZ, List<(RTSUnit unit, Vector3 dest)> netMoves = null)
+        private void AssignRankFormation(List<RTSUnit> units, Vector3 center, Vector3 forward, Vector3 right, int rankIndex, float spX, float spZ, List<(RTSUnit unit, Vector3 dest)> netMoves = null, bool isManualMove = true)
         {
             int maxCols = 6;
             for (int i = 0; i < units.Count; i++)
@@ -1643,7 +1695,7 @@ namespace CSE377.Gameplay
 
                 Vector3 dest = center + right * xOff - forward * zOff;
                 netMoves?.Add((units[i], dest));
-                units[i].MoveTo(dest, isManual: true);
+                units[i].MoveTo(dest, isManual: isManualMove);
             }
         }
 

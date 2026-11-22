@@ -1277,9 +1277,10 @@ namespace CSE377.Gameplay
             string t = (unitType ?? "").ToLower();
             if (t == "archer" || t == "crossbowman")
             {
-                // Menzilli Saldırı: Parabolik ok fırlat ve yay geri tepme animasyonu
+                // Menzilli Saldırı: Parabolik ok fırlat ve yay geri tepme animasyonu (taş-kağıt-makas bonusu dahil)
+                int rangedDamage = CalculateCounterDamage(enemy);
                 StartCoroutine(RangedRecoilCoroutine());
-                RTSProjectile.FireArrow(transform.position, enemy, attack, this, this.team);
+                RTSProjectile.FireArrow(transform.position, enemy, rangedDamage, this, this.team);
                 RTSAudioManager.Instance?.PlaySound(RTSSoundType.ArrowShoot);
             }
             else if (t == "trebuchet")
@@ -1350,25 +1351,35 @@ namespace CSE377.Gameplay
         /// </summary>
         public int CalculateCounterDamage(RTSUnit target)
         {
+            if (target == null) return attack;
             int finalDmg = attack;
-            string myType = unitType.ToLower();
-            string targetType = target.unitType.ToLower();
+            string myType = (unitType ?? "").ToLower();
+            string targetType = (target.unitType ?? "").ToLower();
 
-            // Kural 1: Mızrakçı > Süvari (Bonus +18 hasar)
-            if (myType == "spearman" && targetType == "cavalry")
+            // Kural 1: Mızrakçı > Süvari & Keşif Atlısı (Bonus +18 hasar)
+            if (myType == "spearman" && (targetType == "cavalry" || targetType == "scout"))
             {
                 finalDmg += 18;
-                Debug.Log($"[KRİTİK KARŞITLIK] Mızrakçı süvariye karşı bonus hasar vurdu! Hasar: {finalDmg}");
             }
-            // Kural 2: Süvari > Okçu (Bonus +12 hasar)
-            else if (myType == "cavalry" && targetType == "archer")
+            // Kural 2: Süvari & Keşif Atlısı > Okçu, Arbaletçi, Mancınık ve Köylü (Bonus +12 hasar)
+            else if ((myType == "cavalry" || myType == "scout") &&
+                     (targetType == "archer" || targetType == "crossbowman" || targetType == "trebuchet" || targetType == "villager"))
             {
                 finalDmg += 12;
             }
-            // Kural 3: Okçu > Mızrakçı (Bonus +8 hasar)
-            else if (myType == "archer" && targetType == "spearman")
+            // Kural 3: Okçu & Arbaletçi > Mızrakçı (Bonus +8 hasar); Arbaletçi zırh delici bonusu (+6 vs ağır birlik)
+            else if ((myType == "archer" || myType == "crossbowman") && targetType == "spearman")
             {
                 finalDmg += 8;
+            }
+            else if (myType == "crossbowman" && (targetType == "swordsman" || targetType == "cavalry"))
+            {
+                finalDmg += 6;
+            }
+            // Kural 4: Kılıçlı Piyade > Mızrakçı (Bonus +6 hasar)
+            else if (myType == "swordsman" && targetType == "spearman")
+            {
+                finalDmg += 6;
             }
 
             return finalDmg;
