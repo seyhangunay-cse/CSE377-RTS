@@ -951,18 +951,21 @@ namespace CSE377.Gameplay
                                                 return;
                                             }
 
-                                            bool validBuildTarget = (villager.currentState == VillagerState.WalkingToBuild && !b.isConstructed);
-                                            bool validRepairTarget = (villager.currentState == VillagerState.WalkingToRepair && b.isConstructed && b.currentHp < b.maxHp);
-                                            if (b != null && !b.isDestroyed && b.currentHp > 0 && villager.currentBuildingTask == b && (validBuildTarget || validRepairTarget))
+                                            if (b != null && !b.isDestroyed && b.currentHp > 0 && villager.currentBuildingTask == b)
                                             {
-                                                // Köylü inşa/tamir edeceği binanın sınırına ulaştı! Doğrudan çalışmaya başlasın
-                                                StopMovementOrder();
-                                                villager.currentState = validRepairTarget
-                                                    ? VillagerState.Repairing
-                                                    : VillagerState.Building;
-                                                FaceHorizontal(b.transform.position);
-                                                proposedDir = Vector3.zero;
-                                                return;
+                                                bool validBuildTarget = (villager.currentState == VillagerState.WalkingToBuild && !b.isConstructed);
+                                                bool validRepairTarget = (villager.currentState == VillagerState.WalkingToRepair && b.isConstructed && b.currentHp < b.maxHp);
+                                                if (validBuildTarget || validRepairTarget)
+                                                {
+                                                    // Köylü inşa/tamir edeceği binanın sınırına ulaştı! Doğrudan çalışmaya başlasın
+                                                    StopMovementOrder();
+                                                    villager.currentState = validRepairTarget
+                                                        ? VillagerState.Repairing
+                                                        : VillagerState.Building;
+                                                    FaceHorizontal(b.transform.position);
+                                                    proposedDir = Vector3.zero;
+                                                    return;
+                                                }
                                             }
 
                                             if (villager.currentState == VillagerState.ReturningToTownCenter && b != null &&
